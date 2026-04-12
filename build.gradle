@@ -161,6 +161,7 @@ idea {
         excludeDirs += file('_jacg_o_ee')
         excludeDirs += file('_jacg_o_er')
         excludeDirs += file('h2db')
+        excludeDirs += file('pic')
     }
 }
 
