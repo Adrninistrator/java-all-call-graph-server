@@ -1,0 +1,15 @@
+/build/
+/bin/
+/out/
+.project
+.settings/
+.idea/
+.gradle/
+*.iml
+.classpath
+/project_conf/
+/log/
+/_jacg_o_ee/
+/_jacg_o_er/
+/h2db/
+#prompt/

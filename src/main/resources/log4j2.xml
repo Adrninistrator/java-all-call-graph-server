@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Log4j2 基础配置
+    
+    动态日志文件通过 ExecutionLoggerManager 编程式创建，
+    本配置文件只定义基础的控制台和服务日志文件。
+    
+    注意：
+    1. 动态日志通过 ExecutionLoggerManager.createLogger() 创建
+    2. 只有 com.adrninistrator.javacg2、com.adrninistrator.jacg 包的日志会被重定向到动态文件
+    3. 服务本身的日志写入 java-all-call-graph-server.log
+-->
+<Configuration status="warn">
+    <Properties>
+        <Property name="LOG_DIR">./log</Property>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} {%t} %-5p %c{1}.%M - %m%n</Property>
+    </Properties>
+    
+    <Appenders>
+        <!-- 控制台输出 -->
+        <Console name="console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+        </Console>
+
+        <!-- java-all-call-graph-server本身的日志文件 -->
+        <File name="serverFile" fileName="${LOG_DIR}/java-all-call-graph-server.log">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+        </File>
+    </Appenders>
+
+    <Loggers>
+        <!-- java-callgraph2 库的日志（动态Appender由ExecutionLoggerManager添加） -->
+        <Logger name="com.adrninistrator.javacg2" level="INFO" additivity="false">
+            <AppenderRef ref="console" />
+        </Logger>
+        
+        <!-- java-all-call-graph 库的日志（动态Appender由ExecutionLoggerManager添加） -->
+        <Logger name="com.adrninistrator.jacg" level="INFO" additivity="false">
+            <AppenderRef ref="console" />
+        </Logger>
+
+        <Root level="INFO">
+            <AppenderRef ref="console" />
+            <AppenderRef ref="serverFile" />
+        </Root>
+    </Loggers>
+</Configuration>

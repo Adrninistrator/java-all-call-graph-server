@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.github.adrninistrator.jacgserver.mapper.AnalysisExecutionRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.github.adrninistrator.jacgserver.model.entity.AnalysisExecutionRecord">
+        <id column="id" property="id"/>
+        <result column="exec_id" property="execId"/>
+        <result column="project_id" property="projectId"/>
+        <result column="project_desc" property="projectDesc"/>
+        <result column="jar_files" property="jarFiles"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="status" property="status"/>
+        <result column="duration" property="duration"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, exec_id, project_id, project_desc, jar_files, start_time, end_time, status, duration, error_message, create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.github.adrninistrator.jacgserver.model.entity.AnalysisExecutionRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analysis_execution_record (
+            exec_id,
+            project_id,
+            project_desc,
+            jar_files,
+            start_time,
+            end_time,
+            status,
+            duration,
+            error_message,
+            create_time,
+            update_time
+        ) VALUES (
+            #{execId},
+            #{projectId},
+            #{projectDesc},
+            #{jarFiles},
+            #{startTime},
+            #{endTime},
+            #{status},
+            #{duration},
+            #{errorMessage},
+            #{createTime},
+            #{updateTime}
+        )
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM analysis_execution_record
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByExecId" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM analysis_execution_record
+        WHERE exec_id = #{execId}
+    </select>
+
+    <select id="selectByProjectIdWithPage" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM analysis_execution_record
+        WHERE project_id = #{projectId}
+        <if test="minStartTime != null">
+            AND start_time >= #{minStartTime}
+        </if>
+        ORDER BY start_time DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByProjectId" resultType="int">
+        SELECT COUNT(*)
+        FROM analysis_execution_record
+        WHERE project_id = #{projectId}
+        <if test="minStartTime != null">
+            AND start_time >= #{minStartTime}
+        </if>
+    </select>
+
+    <update id="updateStatus">
+        UPDATE analysis_execution_record
+        SET status = #{status},
+            end_time = #{endTime},
+            duration = #{duration},
+            error_message = #{errorMessage},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectLatestSuccessByProjectId" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM analysis_execution_record
+        WHERE project_id = #{projectId}
+          AND status = 'completed'
+        ORDER BY start_time DESC
+        LIMIT 1
+    </select>
+
+</mapper>

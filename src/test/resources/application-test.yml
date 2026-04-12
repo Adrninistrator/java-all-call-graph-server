@@ -1,0 +1,12 @@
+# 单元测试配置文件
+
+# 使用临时目录作为测试输出目录
+jacgserver:
+  output:
+    root:
+      path: ${java.io.tmpdir}/jacg-server-test
+
+# 日志配置
+logging:
+  level:
+    com.github.adrninistrator.jacgserver: DEBUG

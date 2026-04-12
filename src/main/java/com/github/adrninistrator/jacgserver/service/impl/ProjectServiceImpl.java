@@ -1,0 +1,470 @@
+package com.github.adrninistrator.jacgserver.service.impl;
+
+import com.adrninistrator.jacg.conf.enums.ConfigDbKeyEnum;
+import com.github.adrninistrator.jacgserver.constant.Constants;
+import com.github.adrninistrator.jacgserver.exception.ConfigException;
+import com.github.adrninistrator.jacgserver.exception.ExecuteException;
+import com.github.adrninistrator.jacgserver.exception.ProjectNotFoundException;
+import com.github.adrninistrator.jacgserver.model.dto.JACGConfigDTO;
+import com.github.adrninistrator.jacgserver.model.dto.JavaCG2ConfigDTO;
+import com.github.adrninistrator.jacgserver.model.dto.ProjectDTO;
+import com.github.adrninistrator.jacgserver.model.entity.ProjectListEntity;
+import com.github.adrninistrator.jacgserver.model.vo.ProjectVO;
+import com.github.adrninistrator.jacgserver.service.ConfigService;
+import com.github.adrninistrator.jacgserver.service.ExecuteService;
+import com.github.adrninistrator.jacgserver.service.ProjectService;
+import com.github.adrninistrator.jacgserver.util.ConfigReaderUtil;
+import com.github.adrninistrator.jacgserver.util.ConfigWriterUtil;
+import com.github.adrninistrator.jacgserver.util.ExecutionLoggerManager;
+import com.github.adrninistrator.jacgserver.util.FileUtil;
+import com.github.adrninistrator.jacgserver.util.IdGenerator;
+import com.github.adrninistrator.jacgserver.util.JsonUtil;
+import com.github.adrninistrator.jacgserver.util.MDCUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 项目管理服务实现类
+ * 
+ * 配置参数直接使用java-callgraph2、java-all-call-graph库的标准配置文件格式，
+ * 不再使用额外的project_config.json文件
+ *
+ * @author adrninistrator
+ * @since 1.0.0
+ */
+@Service
+public class ProjectServiceImpl implements ProjectService {
+
+    private static final Logger logger = LoggerFactory.getLogger(ProjectServiceImpl.class);
+
+    @Autowired
+    private ConfigService configService;
+
+    @Autowired
+    private ExecuteService executeService;
+
+    @Override
+    public List<ProjectVO> listProjects() {
+        String projectJsonPath = configService.getProjectConfDir() + File.separator + Constants.PROJECT_JSON_FILE;
+        File projectJsonFile = new File(projectJsonPath);
+
+        List<ProjectVO> projectVOList = new ArrayList<>();
+        if (!projectJsonFile.exists()) {
+            return projectVOList;
+        }
+
+        ProjectListEntity projectListEntity = JsonUtil.fromFile(projectJsonFile, ProjectListEntity.class);
+        if (projectListEntity == null || projectListEntity.getProjects() == null) {
+            return projectVOList;
+        }
+
+        for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
+            ProjectVO projectVO = new ProjectVO();
+            projectVO.setProjectId(item.getProjectId());
+            projectVO.setDescription(item.getDescription());
+            projectVO.setCreateTime(item.getCreateTime());
+            projectVO.setUpdateTime(item.getUpdateTime());
+            projectVOList.add(projectVO);
+        }
+
+        // 按创建时间倒序排序
+        projectVOList.sort((a, b) -> b.getCreateTime().compareTo(a.getCreateTime()));
+        return projectVOList;
+    }
+
+    @Override
+    public ProjectVO getProject(String projectId) {
+        String projectDir = configService.getProjectConfDir() + File.separator + projectId;
+        if (!FileUtil.exists(projectDir)) {
+            throw new ProjectNotFoundException("项目不存在: " + projectId);
+        }
+
+        // 从project.json获取基本信息
+        String projectJsonPath = configService.getProjectConfDir() + File.separator + Constants.PROJECT_JSON_FILE;
+        File projectJsonFile = new File(projectJsonPath);
+        ProjectListEntity projectListEntity = JsonUtil.fromFile(projectJsonFile, ProjectListEntity.class);
+
+        ProjectVO projectVO = new ProjectVO();
+        projectVO.setProjectId(projectId);
+
+        if (projectListEntity != null && projectListEntity.getProjects() != null) {
+            for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
+                if (projectId.equals(item.getProjectId())) {
+                    projectVO.setDescription(item.getDescription());
+                    projectVO.setCreateTime(item.getCreateTime());
+                    projectVO.setUpdateTime(item.getUpdateTime());
+                    break;
+                }
+            }
+        }
+
+        // 从库配置文件读取配置参数
+        JavaCG2ConfigDTO javaCG2Config = ConfigReaderUtil.readJavaCG2Config(projectDir);
+        JACGConfigDTO jacgConfig = ConfigReaderUtil.readJACGConfig(projectDir);
+
+        projectVO.setJavaCG2Config(javaCG2Config);
+        projectVO.setJacgConfig(jacgConfig);
+
+        return projectVO;
+    }
+
+    @Override
+    public ProjectVO createProject(ProjectDTO projectDTO) {
+        // 检查项目名称是否为空
+        if (projectDTO.getDescription() == null || projectDTO.getDescription().trim().isEmpty()) {
+            throw new ConfigException("项目名称不能为空");
+        }
+
+        // 最早阶段生成项目ID，用于日志目录
+        String projectId = IdGenerator.generateId();
+
+        // 创建动态日志Appender，使库日志写入项目对应的日志目录
+        String logId = projectId + "_project_create";
+        String logFilePath = Constants.LOG_DIR + File.separator + projectId + File.separator + "project_create.log";
+        ExecutionLoggerManager.createLogger(logId, logFilePath);
+
+        // 设置动态日志上下文
+        MDCUtil.setProjectCreateMDC(projectId);
+        try {
+            return doCreateProject(projectId, projectDTO);
+        } finally {
+            MDCUtil.clearMDC();
+            ExecutionLoggerManager.removeLogger(logId);
+        }
+    }
+
+    /**
+     * 实际创建项目的逻辑
+     */
+    private ProjectVO doCreateProject(String projectId, ProjectDTO projectDTO) {
+        // 检查项目名称是否重复
+        if (isProjectNameExists(projectDTO.getDescription(), null)) {
+            throw new ConfigException("项目名称已存在: " + projectDTO.getDescription());
+        }
+
+        // 检查Jar/Class文件路径是否为空
+        if (!hasJarPaths(projectDTO.getJavaCG2Config())) {
+            throw new ConfigException("Jar/Class文件路径不能为空");
+        }
+
+        String currentTime = IdGenerator.getCurrentTime();
+
+        // 创建项目目录
+        String projectDir = configService.getProjectConfDir() + File.separator + projectId;
+        if (!FileUtil.createDirectory(projectDir)) {
+            throw new ConfigException("创建项目目录失败: " + projectDir);
+        }
+
+        // 创建模板目录
+        String templatesDir = projectDir + File.separator + Constants.TEMPLATES_DIR;
+        if (!FileUtil.createDirectory(templatesDir)) {
+            throw new ConfigException("创建模板目录失败: " + templatesDir);
+        }
+
+        // 生成配置文件（使用库的标准格式）
+        if (projectDTO.getJavaCG2Config() != null) {
+            ConfigWriterUtil.writeJavaCG2Config(projectDir, projectDTO.getJavaCG2Config());
+        }
+        if (projectDTO.getJacgConfig() != null) {
+            ConfigWriterUtil.writeJACGConfig(projectDir, projectDTO.getJacgConfig());
+        }
+
+        // 更新项目列表
+        updateProjectList(projectId, projectDTO.getDescription(), currentTime, currentTime, false);
+
+        ProjectVO projectVO = new ProjectVO();
+        projectVO.setProjectId(projectId);
+        projectVO.setDescription(projectDTO.getDescription());
+        projectVO.setCreateTime(currentTime);
+        projectVO.setUpdateTime(currentTime);
+        projectVO.setJavaCG2Config(projectDTO.getJavaCG2Config());
+        projectVO.setJacgConfig(projectDTO.getJacgConfig());
+
+        logger.info("创建项目成功: projectId={}, description={}", projectId, projectDTO.getDescription());
+        return projectVO;
+    }
+
+    @Override
+    public void updateProject(String projectId, ProjectDTO projectDTO) {
+        // 检查项目是否正在执行
+        if (executeService.isProjectExecuting(projectId)) {
+            throw new ExecuteException("项目正在执行静态分析，请稍后再试");
+        }
+
+        String projectDir = configService.getProjectConfDir() + File.separator + projectId;
+        if (!FileUtil.exists(projectDir)) {
+            throw new ProjectNotFoundException("项目不存在: " + projectId);
+        }
+
+        // 检查项目名称是否为空
+        if (projectDTO.getDescription() == null || projectDTO.getDescription().trim().isEmpty()) {
+            throw new ConfigException("项目名称不能为空");
+        }
+
+        // 检查项目名称是否重复（排除当前项目）
+        if (isProjectNameExists(projectDTO.getDescription(), projectId)) {
+            throw new ConfigException("项目名称已存在: " + projectDTO.getDescription());
+        }
+
+        // 检查Jar/Class文件路径是否为空
+        if (!hasJarPaths(projectDTO.getJavaCG2Config())) {
+            throw new ConfigException("Jar/Class文件路径不能为空");
+        }
+
+        String currentTime = IdGenerator.getCurrentTime();
+
+        // 从project.json获取创建时间
+        String projectJsonPath = configService.getProjectConfDir() + File.separator + Constants.PROJECT_JSON_FILE;
+        File projectJsonFile = new File(projectJsonPath);
+        String createTime = currentTime;
+        
+        if (projectJsonFile.exists()) {
+            ProjectListEntity projectListEntity = JsonUtil.fromFile(projectJsonFile, ProjectListEntity.class);
+            if (projectListEntity != null && projectListEntity.getProjects() != null) {
+                for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
+                    if (projectId.equals(item.getProjectId())) {
+                        createTime = item.getCreateTime();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 重新生成配置文件
+        if (projectDTO.getJavaCG2Config() != null) {
+            ConfigWriterUtil.writeJavaCG2Config(projectDir, projectDTO.getJavaCG2Config());
+        }
+        if (projectDTO.getJacgConfig() != null) {
+            ConfigWriterUtil.writeJACGConfig(projectDir, projectDTO.getJacgConfig());
+        }
+
+        // 复制项目的数据库配置文件到所有模板目录（项目与模板使用完全相同的数据库配置）
+        copyDbConfigFileToAllTemplates(projectDir);
+
+        // 更新项目列表
+        updateProjectList(projectId, projectDTO.getDescription(), createTime, currentTime, true);
+
+        logger.info("更新项目成功: projectId={}", projectId);
+    }
+
+    /**
+     * 复制项目的数据库配置文件到所有模板目录
+     * 项目与项目下的所有模板都使用完全相同的数据库配置
+     *
+     * @param projectDir 项目目录路径
+     */
+    private void copyDbConfigFileToAllTemplates(String projectDir) {
+        // 获取数据库配置文件名（相对于配置目录）
+        String dbConfigFileName = ConfigDbKeyEnum.CDKE_DB_USE_H2.getFileName();
+        File sourceFile = new File(projectDir, dbConfigFileName);
+
+        if (!sourceFile.exists()) {
+            logger.warn("项目的数据库配置文件不存在，跳过复制到模板: {}", sourceFile.getAbsolutePath());
+            return;
+        }
+
+        // 获取项目下的所有模板目录
+        String templatesDir = projectDir + File.separator + Constants.TEMPLATES_DIR;
+        File templatesDirFile = new File(templatesDir);
+        if (!templatesDirFile.exists() || !templatesDirFile.isDirectory()) {
+            logger.debug("项目下没有模板目录: {}", templatesDir);
+            return;
+        }
+
+        File[] templateDirs = templatesDirFile.listFiles(File::isDirectory);
+        if (templateDirs == null || templateDirs.length == 0) {
+            logger.debug("项目下没有模板: {}", templatesDir);
+            return;
+        }
+
+        // 遍历所有模板目录，复制数据库配置文件
+        for (File templateDir : templateDirs) {
+            File targetFile = new File(templateDir, dbConfigFileName);
+            File targetParentDir = targetFile.getParentFile();
+
+            // 确保目标目录存在
+            if (!targetParentDir.exists()) {
+                if (!targetParentDir.mkdirs()) {
+                    logger.warn("创建模板数据库配置目录失败: {}", targetParentDir.getAbsolutePath());
+                    continue;
+                }
+            }
+
+            // 复制文件
+            try {
+                Path sourcePath = sourceFile.toPath();
+                Path targetPath = targetFile.toPath();
+                Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                logger.info("复制数据库配置文件到模板成功: {} -> {}", sourcePath, targetPath);
+            } catch (IOException e) {
+                logger.error("复制数据库配置文件到模板失败: {} -> {}", sourceFile.getAbsolutePath(), targetFile.getAbsolutePath(), e);
+            }
+        }
+    }
+
+    @Override
+    public void deleteProject(String projectId) {
+        // 检查项目是否正在执行
+        if (executeService.isProjectExecuting(projectId)) {
+            throw new ExecuteException("项目正在执行静态分析，请稍后再试");
+        }
+
+        String projectDir = configService.getProjectConfDir() + File.separator + projectId;
+        if (!FileUtil.exists(projectDir)) {
+            throw new ProjectNotFoundException("项目不存在: " + projectId);
+        }
+
+        // 删除项目目录
+        if (!FileUtil.deleteDirectory(projectDir)) {
+            throw new ConfigException("删除项目目录失败");
+        }
+
+        // 从项目列表中移除
+        removeFromProjectList(projectId);
+
+        logger.info("删除项目成功: projectId={}", projectId);
+    }
+
+    @Override
+    public ProjectVO copyProject(String projectId, String description) {
+        // 检查项目是否正在执行
+        if (executeService.isProjectExecuting(projectId)) {
+            throw new ExecuteException("项目正在执行静态分析，请稍后再试");
+        }
+
+        ProjectVO sourceProject = getProject(projectId);
+
+        ProjectDTO projectDTO = new ProjectDTO();
+        projectDTO.setDescription(description != null ? description : sourceProject.getDescription() + "-副本");
+        projectDTO.setJavaCG2Config(sourceProject.getJavaCG2Config());
+        projectDTO.setJacgConfig(sourceProject.getJacgConfig());
+
+        return createProject(projectDTO);
+    }
+
+    /**
+     * 更新项目列表
+     */
+    private void updateProjectList(String projectId, String description, String createTime, String updateTime, boolean isUpdate) {
+        String projectConfDir = configService.getProjectConfDir();
+        if (!FileUtil.createDirectory(projectConfDir)) {
+            throw new ConfigException("创建项目配置目录失败");
+        }
+
+        String projectJsonPath = projectConfDir + File.separator + Constants.PROJECT_JSON_FILE;
+        File projectJsonFile = new File(projectJsonPath);
+
+        ProjectListEntity projectListEntity = new ProjectListEntity();
+
+        if (projectJsonFile.exists()) {
+            ProjectListEntity existingEntity = JsonUtil.fromFile(projectJsonFile, ProjectListEntity.class);
+            if (existingEntity != null && existingEntity.getProjects() != null) {
+                projectListEntity.setProjects(existingEntity.getProjects());
+            }
+        }
+
+        List<ProjectListEntity.ProjectListItem> projects = projectListEntity.getProjects();
+
+        if (isUpdate) {
+            // 更新现有项目
+            for (ProjectListEntity.ProjectListItem item : projects) {
+                if (projectId.equals(item.getProjectId())) {
+                    item.setDescription(description);
+                    item.setUpdateTime(updateTime);
+                    break;
+                }
+            }
+        } else {
+            // 添加新项目
+            ProjectListEntity.ProjectListItem newItem = new ProjectListEntity.ProjectListItem();
+            newItem.setProjectId(projectId);
+            newItem.setDescription(description);
+            newItem.setCreateTime(createTime);
+            newItem.setUpdateTime(updateTime);
+            projects.add(newItem);
+        }
+
+        if (!JsonUtil.toFile(projectJsonFile, projectListEntity)) {
+            throw new ConfigException("保存项目列表失败");
+        }
+    }
+
+    /**
+     * 从项目列表中移除项目
+     */
+    private void removeFromProjectList(String projectId) {
+        String projectJsonPath = configService.getProjectConfDir() + File.separator + Constants.PROJECT_JSON_FILE;
+        File projectJsonFile = new File(projectJsonPath);
+
+        if (!projectJsonFile.exists()) {
+            return;
+        }
+
+        ProjectListEntity projectListEntity = JsonUtil.fromFile(projectJsonFile, ProjectListEntity.class);
+        if (projectListEntity == null || projectListEntity.getProjects() == null) {
+            return;
+        }
+
+        projectListEntity.getProjects().removeIf(item -> projectId.equals(item.getProjectId()));
+        JsonUtil.toFile(projectJsonFile, projectListEntity);
+    }
+
+    /**
+     * 检查项目名称是否已存在
+     *
+     * @param description 项目名称
+     * @param excludeProjectId 排除的项目ID（更新时使用）
+     * @return true-已存在，false-不存在
+     */
+    private boolean isProjectNameExists(String description, String excludeProjectId) {
+        if (description == null || description.isEmpty()) {
+            return false;
+        }
+        String projectJsonPath = configService.getProjectConfDir() + File.separator + Constants.PROJECT_JSON_FILE;
+        File projectJsonFile = new File(projectJsonPath);
+
+        if (!projectJsonFile.exists()) {
+            return false;
+        }
+
+        ProjectListEntity projectListEntity = JsonUtil.fromFile(projectJsonFile, ProjectListEntity.class);
+        if (projectListEntity == null || projectListEntity.getProjects() == null) {
+            return false;
+        }
+
+        for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
+            if (description.equals(item.getDescription())) {
+                // 如果是更新操作，排除当前项目
+                if (excludeProjectId != null && excludeProjectId.equals(item.getProjectId())) {
+                    continue;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 检查JavaCG2配置中是否有Jar路径配置
+     *
+     * @param javaCG2Config JavaCG2配置
+     * @return true-有配置，false-无配置
+     */
+    private boolean hasJarPaths(JavaCG2ConfigDTO javaCG2Config) {
+        if (javaCG2Config == null || javaCG2Config.getListConfig() == null) {
+            return false;
+        }
+        List<String> jarPaths = javaCG2Config.getListConfig().get("OCFULE_JAR_DIR");
+        return jarPaths != null && !jarPaths.isEmpty();
+    }
+}

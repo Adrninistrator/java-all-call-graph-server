@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Java All Call Graph Server</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <h1>Java All Call Graph Server</h1>
+            <div class="header-info">
+                <span>输出根目录: <span id="outputRootPath">-</span></span>
+                <button class="btn btn-small" onclick="openAppRootDirectory()">打开主目录</button>
+            </div>
+        </header>
+
+        <!-- 主内容区域 -->
+        <main class="main-content">
+            <!-- 左侧项目列表 -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>项目列表</h2>
+                    <button class="btn btn-primary" onclick="showCreateProjectModal()">新建项目</button>
+                </div>
+                <div id="projectList" class="project-list"></div>
+            </aside>
+
+            <!-- 右侧内容区域 -->
+            <section class="content">
+                <!-- 项目详情 -->
+                <div id="projectDetail" class="panel hidden">
+                    <div class="panel-header">
+                        <h2 id="projectTitle">项目详情</h2>
+                        <div class="panel-actions">
+                            <button class="btn btn-success" onclick="executeAnalysis()">执行静态分析</button>
+                            <button class="btn btn-info" onclick="showExecutionRecordModal()">查询执行记录</button>
+                            <button class="btn btn-secondary" onclick="openProjectLogDirectory()">打开日志目录</button>
+                            <button class="btn btn-secondary" onclick="editProject()">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteProject()">删除</button>
+                            <button class="btn btn-secondary" onclick="copyProject()">复制</button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="info-row">
+                            <span class="label">项目ID:</span>
+                            <span id="detailProjectId" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">描述:</span>
+                            <span id="detailDescription" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">创建时间:</span>
+                            <span id="detailCreateTime" class="value"></span>
+                        </div>
+                    </div>
+
+                    <!-- 模板列表 -->
+                    <div class="template-section">
+                        <div class="section-header">
+                            <h3>模板列表</h3>
+                            <button class="btn btn-primary" onclick="showCreateTemplateModal()">新建模板</button>
+                        </div>
+                        <div id="templateList" class="template-list"></div>
+                    </div>
+                </div>
+
+                <!-- 模板详情 -->
+                <div id="templateDetail" class="panel hidden">
+                    <div class="panel-header">
+                        <h2 id="templateTitle">模板详情</h2>
+                        <div class="panel-actions">
+                            <button class="btn btn-success" onclick="executeCallGraph()">生成调用链</button>
+                            <button class="btn btn-warning btn-small-text" onclick="executeFindStack()">生成调用链根据<br>关键字生成堆栈</button>
+                            <button class="btn btn-info" onclick="showTemplateExecutionRecordModal()">查询执行记录</button>
+                            <button class="btn btn-secondary" onclick="editTemplate()">编辑</button>
+                            <button class="btn btn-danger" onclick="deleteTemplate()">删除</button>
+                            <button class="btn btn-secondary" onclick="copyTemplate()">复制</button>
+                            <button class="btn btn-secondary" onclick="backToProject()">返回项目</button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="info-row">
+                            <span class="label">模板ID:</span>
+                            <span id="detailTemplateId" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">描述:</span>
+                            <span id="detailTemplateDescription" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">方向:</span>
+                            <span id="detailDirection" class="value"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 欢迎页面 -->
+                <div id="welcomePanel" class="panel">
+                    <div class="welcome">
+                        <h2>欢迎使用 Java All Call Graph Server</h2>
+                        <p>请从左侧选择一个项目，或创建新项目开始使用。</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 项目编辑模态框（外层） -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">标题</h3>
+                <div id="modalHeaderActions" class="modal-header-actions"></div>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- 新建项目表单 -->
+                <div id="createProjectForm" class="modal-form hidden">
+                    <div class="form-group">
+                        <label>描述</label>
+                        <input type="text" id="projectDescription" class="form-control" placeholder="请输入项目描述">
+                    </div>
+                    <div class="form-group">
+                        <label>Jar/Class 文件路径 <button type="button" class="btn-desc-help" onclick="showConfigDescription('javacg2-list', 'OCFULE_JAR_DIR')" title="查看参数说明">?</button></label>
+                        <textarea id="jarPaths" class="form-control" placeholder="每行一个文件路径或目录"></textarea>
+                    </div>
+                    <div class="form-tip">提示：创建项目后可在编辑页面配置更多参数</div>
+                </div>
+                <!-- 编辑项目表单 -->
+                <div id="editProjectForm" class="modal-form hidden">
+                    <div class="form-group">
+                        <label>描述</label>
+                        <input type="text" id="editProjectDescription" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Jar/Class 文件路径 <button type="button" class="btn-desc-help" onclick="showConfigDescription('javacg2-list', 'OCFULE_JAR_DIR')" title="查看参数说明">?</button></label>
+                        <textarea id="editJarPaths" class="form-control" placeholder="每行一个文件路径或目录"></textarea>
+                    </div>
+                </div>
+                <!-- 复制项目表单 -->
+                <div id="copyProjectForm" class="modal-form hidden">
+                    <div class="form-group">
+                        <label>新项目描述</label>
+                        <input type="text" id="copyProjectDescription" class="form-control">
+                    </div>
+                </div>
+                <!-- 复制模板表单 -->
+                <div id="copyTemplateForm" class="modal-form hidden">
+                    <div class="form-group">
+                        <label>新模板描述</label>
+                        <input type="text" id="copyTemplateDescription" class="form-control">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                <button id="modalConfirm" class="btn btn-primary" onclick="confirmModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模板编辑模态框（外层） -->
+    <div id="templateModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="templateModalTitle">标题</h3>
+                <div id="templateModalHeaderActions" class="modal-header-actions"></div>
+                <button class="modal-close" onclick="closeTemplateModal()">&times;</button>
+            </div>
+            <div id="templateModalBody" class="modal-body">
+                <!-- 新建模板表单 -->
+                <div id="createTemplateForm" class="modal-form hidden">
+                    <div class="form-group">
+                        <label>描述</label>
+                        <input type="text" id="templateDescription" class="form-control" placeholder="请输入模板描述">
+                    </div>
+                    <div class="form-group">
+                        <label>调用链方向</label>
+                        <select id="templateDirection" class="form-control" onchange="updateEntryPointLabel()">
+                            <option value="caller">向下调用链</option>
+                            <option value="callee">向上调用链</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label id="entryPointLabel">入口类/方法（每行一个） <button type="button" class="btn-desc-help" onclick="showEntryPointDescription()" title="查看参数说明">?</button></label>
+                        <textarea id="entryPoints" class="form-control" placeholder="如: com.example.Controller&#10;或: com.example.Service:methodName"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <div class="toggle-switch-row">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="enableFindStack" onchange="toggleFindStackKeywords()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-label">生成调用链根据关键字生成堆栈</span>
+                            <button type="button" class="btn-desc-help" onclick="showFindStackKeywordsDescription()" title="查看参数说明">?</button>
+                        </div>
+                    </div>
+                    <div class="form-group" id="findStackKeywordsGroup" style="display: none;">
+                        <label id="findStackKeywordsLabel">关键字（每行一个）</label>
+                        <textarea id="findStackKeywords" class="form-control" placeholder="每行一个关键字"></textarea>
+                    </div>
+                    <div class="form-tip">提示：创建模板后可在编辑页面配置更多参数</div>
+                </div>
+                <!-- 编辑模板表单 -->
+                <div id="editTemplateForm" class="modal-form hidden">
+                    <div class="form-group">
+                        <label>描述</label>
+                        <input type="text" id="editTemplateDescription" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>调用链方向</label>
+                        <select id="editTemplateDirection" class="form-control" onchange="updateEditEntryPointLabel()">
+                            <option value="caller">向下调用链</option>
+                            <option value="callee">向上调用链</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label id="editEntryPointLabel">入口类/方法（每行一个） <button type="button" class="btn-desc-help" onclick="showEntryPointDescription()" title="查看参数说明">?</button></label>
+                        <textarea id="editEntryPoints" class="form-control" placeholder="如: com.example.Controller&#10;或: com.example.Service:methodName"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <div class="toggle-switch-row">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="editEnableFindStack" onchange="toggleEditFindStackKeywords()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-label">生成调用链根据关键字生成堆栈</span>
+                            <button type="button" class="btn-desc-help" onclick="showFindStackKeywordsDescription()" title="查看参数说明">?</button>
+                        </div>
+                    </div>
+                    <div class="form-group" id="editFindStackKeywordsGroup" style="display: none;">
+                        <label id="editFindStackKeywordsLabel">关键字（每行一个）</label>
+                        <textarea id="editFindStackKeywords" class="form-control" placeholder="每行一个关键字"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeTemplateModal()">取消</button>
+                <button id="templateModalConfirm" class="btn btn-primary" onclick="confirmTemplateModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 项目配置编辑模态框（内层） -->
+    <div id="configModal" class="modal hidden">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 id="configModalTitle">配置编辑</h3>
+                <button class="modal-close" onclick="closeConfigModal()">&times;</button>
+            </div>
+            <div id="configModalBody" class="modal-body"></div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeConfigModal()">取消</button>
+                <button class="btn btn-primary" onclick="applyConfigModal()">应用</button>
+                <button id="configModalConfirm" class="btn btn-primary" onclick="confirmConfigModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模板配置编辑模态框（内层） -->
+    <div id="templateConfigModal" class="modal hidden">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 id="templateConfigModalTitle">配置编辑</h3>
+                <button class="modal-close" onclick="closeTemplateConfigModal()">&times;</button>
+            </div>
+            <div id="templateConfigModalBody" class="modal-body"></div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeTemplateConfigModal()">取消</button>
+                <button class="btn btn-primary" onclick="applyTemplateConfigModal()">应用</button>
+                <button id="templateConfigModalConfirm" class="btn btn-primary" onclick="confirmTemplateConfigModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 执行状态模态框 -->
+    <div id="execModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>执行状态</h3>
+                <button class="modal-close" onclick="closeExecModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <div>执行ID: <span id="execId">-</span></div>
+                    <div id="execStatus" class="mt-2">状态: 检查中...</div>
+                    <div class="mt-2"><button class="btn btn-secondary" onclick="pollExecutionStatus(currentExecId)">刷新状态</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 执行记录查询模态框 -->
+    <div id="executionRecordModal" class="modal hidden">
+        <div class="modal-content modal-content-large">
+            <div class="modal-header">
+                <h3>项目执行记录</h3>
+                <button class="modal-close" onclick="closeExecutionRecordModal()">&times;</button>
+            </div>
+            <div id="executionRecordModalBody" class="modal-body">
+                <!-- 查询条件 -->
+                <div class="query-condition">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>最小开始时间</label>
+                            <input type="datetime-local" id="queryMinStartTime" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>每页数量</label>
+                            <select id="queryPageSize" class="form-control">
+                                <option value="10">10</option>
+                                <option value="20">20</option>
+                                <option value="30">30</option>
+                                <option value="40">40</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button class="btn btn-primary" onclick="queryExecutionRecords()">查询</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 记录列表 -->
+                <div id="executionRecordList" class="record-list"></div>
+                <!-- 分页 -->
+                <div id="executionRecordPagination" class="pagination"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模板执行记录查询模态框 -->
+    <div id="templateExecutionRecordModal" class="modal hidden">
+        <div class="modal-content modal-content-large">
+            <div class="modal-header">
+                <h3>模板执行记录</h3>
+                <button class="modal-close" onclick="closeTemplateExecutionRecordModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- 记录类型选择 -->
+                <div class="tabs" style="margin-bottom: 15px;">
+                    <div class="tab active" onclick="switchTemplateRecordType('callgraph')">生成调用链记录</div>
+                    <div class="tab" onclick="switchTemplateRecordType('findstack')">生成堆栈记录</div>
+                </div>
+                <!-- 查询条件 -->
+                <div class="query-condition">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>最小开始时间</label>
+                            <input type="datetime-local" id="templateQueryMinStartTime" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>每页数量</label>
+                            <select id="templateQueryPageSize" class="form-control">
+                                <option value="10">10</option>
+                                <option value="20">20</option>
+                                <option value="30">30</option>
+                                <option value="40">40</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button class="btn btn-primary" onclick="queryTemplateExecutionRecords()">查询</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 记录列表 -->
+                <div id="templateExecutionRecordList" class="record-list"></div>
+                <!-- 分页 -->
+                <div id="templateExecutionRecordPagination" class="pagination"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模板数据库配置提示模板（静态元素） -->
+    <template id="templateDbConfigTipTemplate">
+        <div class="config-tip-box">
+            <span class="config-tip-icon">ℹ️</span>
+            <span class="config-tip-text">模板会自动使用对应项目的数据库配置</span>
+        </div>
+    </template>
+
+    <!-- JS文件（按依赖顺序加载） -->
+    <script src="js/app-core.js"></script>
+    <script src="js/app-el.js"></script>
+    <script src="js/app-config.js"></script>
+    <script src="js/app-project.js"></script>
+    <script src="js/app-template.js"></script>
+    <script src="js/app-modal.js"></script>
+
+    <!-- Toast通知容器 -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- EL表达式右键菜单容器 -->
+    <div id="elContextMenu" class="el-context-menu" style="display: none;"></div>
+
+    <!-- 表达式配置检查错误弹窗 -->
+    <div id="elConfigErrorModal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 style="color: #dc3545;">表达式配置检查失败</h3>
+                <button class="modal-close" onclick="closeElConfigErrorModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <table class="el-config-error-table">
+                    <tr>
+                        <th>配置来源</th>
+                        <td><code id="elErrorConfigSource">-</code></td>
+                    </tr>
+                    <tr>
+                        <th>配置枚举名称</th>
+                        <td><code id="elErrorConfigEnumName">-</code></td>
+                    </tr>
+                    <tr>
+                        <th>配置文件名</th>
+                        <td><code id="elErrorConfigFileName">-</code></td>
+                    </tr>
+                    <tr>
+                        <th>配置描述</th>
+                        <td id="elErrorConfigDescription">-</td>
+                    </tr>
+                    <tr>
+                        <th>表达式内容</th>
+                        <td><pre id="elErrorElText" class="el-text-preview">-</pre></td>
+                    </tr>
+                    <tr>
+                        <th>错误信息</th>
+                        <td id="elErrorErrorMessage" style="color: #dc3545;">-</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="modal-footer" style="padding: 15px 20px; text-align: right;">
+                <button class="btn btn-primary" onclick="closeElConfigErrorModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

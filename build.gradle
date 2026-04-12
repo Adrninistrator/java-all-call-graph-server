@@ -1,0 +1,267 @@
+apply plugin: 'eclipse'
+apply plugin: 'java'
+apply plugin: 'java-library'
+apply plugin: 'idea'
+apply plugin: 'org.springframework.boot'
+apply plugin: 'io.spring.dependency-management'
+
+group 'com.github.adrninistrator'
+version = "0.0.1"
+def projectName = "java-all-call-graph-server"
+description = "${projectName}"
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+def defaultEncoding = 'UTF-8'
+
+[compileJava, compileTestJava]*.options*.encoding = defaultEncoding
+
+project.buildDir = 'build'
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.springframework.boot:spring-boot-gradle-plugin:2.7.18'
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+clean {
+    delete "${buildDir}"
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+
+        resources {
+            srcDir 'src/main/resources'
+        }
+    }
+
+    test {
+        java {
+            srcDir 'src/test/java'
+        }
+
+        resources {
+            srcDir 'src/test/resources'
+        }
+    }
+}
+
+List java_all_call_graph = ['com.github.adrninistrator:java-all-call-graph:4.0.7']
+
+// 版本号变量
+def springFrameworkVersion = '5.3.39'
+def log4jVersion = '2.24.3'
+def jacksonVersion = '2.17.2'
+def junitVersion = '5.10.5'
+def junitPlatformVersion = '1.10.5'
+
+List log4j = [
+        "org.apache.logging.log4j:log4j-api:${log4jVersion}",
+        "org.apache.logging.log4j:log4j-core:${log4jVersion}",
+        "org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}"
+]
+
+List disruptor = ['com.lmax:disruptor:3.3.7']
+
+List commons = ['org.apache.commons:commons-lang3:3.17.0']
+
+List junit = [
+        "org.junit.platform:junit-platform-launcher:${junitPlatformVersion}",
+        "org.junit.platform:junit-platform-commons:${junitPlatformVersion}",
+        "org.junit.platform:junit-platform-engine:${junitPlatformVersion}",
+        "org.junit.jupiter:junit-jupiter-api:${junitVersion}",
+        "org.junit.jupiter:junit-jupiter-engine:${junitVersion}"
+]
+
+List jackson = [
+        "com.fasterxml.jackson.core:jackson-core:${jacksonVersion}",
+        "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}",
+        "com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}",
+        "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${jacksonVersion}"
+]
+
+// 显式指定 Spring Framework 版本，覆盖 Spring Boot 默认版本，修复安全漏洞
+List spring_framework = [
+        "org.springframework:spring-core:${springFrameworkVersion}",
+        "org.springframework:spring-context:${springFrameworkVersion}",
+        "org.springframework:spring-beans:${springFrameworkVersion}",
+        "org.springframework:spring-web:${springFrameworkVersion}",
+        "org.springframework:spring-webmvc:${springFrameworkVersion}"
+]
+
+List spring_boot = [
+        'org.springframework.boot:spring-boot-starter-web',
+        'org.springframework.boot:spring-boot-starter-log4j2',
+        'org.springframework.boot:spring-boot-starter-jdbc',
+        'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.3.2'
+]
+
+// H2数据库依赖
+List h2 = ['com.h2database:h2:2.2.224']
+
+List spring_boot_test = ['org.springframework.boot:spring-boot-starter-test']
+
+configurations {
+    all*.exclude module: 'spring-boot-starter-logging'
+}
+
+dependencies {
+    implementation spring_boot, java_all_call_graph, log4j, disruptor, jackson, spring_framework, commons, h2
+    testImplementation spring_boot_test, junit
+}
+
+compileJava.options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
+
+test {
+    useJUnitPlatform()
+
+    doFirst {
+        testLogging {
+            events "PASSED", "STARTED", "FAILED", "SKIPPED"
+        }
+    }
+}
+
+processResources {
+    setDuplicatesStrategy(DuplicatesStrategy.INCLUDE)
+}
+
+processTestResources {
+    setDuplicatesStrategy(DuplicatesStrategy.INCLUDE)
+}
+
+tasks.register('createProject') {
+    doFirst {
+        sourceSets*.java.srcDirs*.each { it.mkdirs() }
+        sourceSets*.resources.srcDirs*.each { it.mkdirs() }
+    }
+}
+
+idea {
+    module {
+        // and some extra dirs that should be excluded by IDEA
+        excludeDirs += file('.idea')
+        excludeDirs += file('gradle')
+        excludeDirs += file('bat')
+        excludeDirs += file('shell')
+        excludeDirs += file('prompt')
+        excludeDirs += file('project_conf')
+        excludeDirs += file('log')
+        excludeDirs += file('_jacg_o_ee')
+        excludeDirs += file('_jacg_o_er')
+        excludeDirs += file('h2db')
+    }
+}
+
+// ============================================================
+// Spring Boot 打包配置
+// ============================================================
+
+bootJar {
+    archiveBaseName = "${projectName}"
+    archiveVersion = ''
+    archiveClassifier = ''
+
+    manifest {
+        attributes(
+            'Implementation-Title': "${projectName}",
+            'Implementation-Version': "${version}",
+            'Main-Class': 'org.springframework.boot.loader.JarLauncher',
+            'Start-Class': 'com.github.adrninistrator.jacgserver.JacgServerApplication'
+        )
+    }
+
+    // 排除配置文件，不打入 fat jar（静态资源保留在jar内）
+    exclude('application.yml')
+    exclude('application-*.yml')
+    exclude('log4j2.xml')
+}
+
+// 禁用普通jar任务，只生成bootJar
+jar {
+    enabled = false
+}
+
+// ============================================================
+// 构建时拷贝配置文件到 conf 目录
+// ============================================================
+
+tasks.register('copyConfigFiles', Copy) {
+    description = '拷贝配置文件到构建目录的conf目录'
+    group = 'build'
+
+    from 'src/main/resources'
+    include 'application.yml'
+    include 'application-*.yml'
+    include 'log4j2.xml'
+
+    into "${buildDir}/libs/conf"
+}
+
+// ============================================================
+// 构建时拷贝启动脚本
+// ============================================================
+
+tasks.register('copyStartScripts', Copy) {
+    description = '拷贝启动脚本到构建目录（start.bat等）'
+    group = 'build'
+
+    from 'bat'
+    include '*.bat'
+    into "${buildDir}/libs"
+
+    // 设置文件权限（对Unix系统有效）
+    fileMode = 0755
+}
+
+// 构建完成后自动拷贝配置文件和启动脚本
+bootJar.finalizedBy(copyConfigFiles)
+copyConfigFiles.finalizedBy(copyStartScripts)
+
+// ============================================================
+// 构建信息任务
+// ============================================================
+
+tasks.register('printBuildInfo') {
+    description = '打印构建信息'
+    group = 'help'
+
+    doLast {
+        println ''
+        println '============================================================'
+        println "项目名称: ${projectName}"
+        println "项目版本: ${version}"
+        println "构建目录: ${buildDir}"
+        println "输出文件: ${buildDir}/libs/${projectName}.jar"
+        println "配置目录: ${buildDir}/libs/conf"
+        println "启动脚本: ${buildDir}/libs/start.bat"
+        println '============================================================'
+        println ''
+        println '构建命令:'
+        println '  gradlew clean bootJar    - 清理并构建'
+        println '  gradlew bootJar           - 构建'
+        println '  gradlew bootRun           - 直接运行'
+        println ''
+        println '运行方式:'
+        println '  1. 进入 build/libs 目录'
+        println '  2. 执行 start.bat 启动服务'
+        println '  3. 配置文件位于 conf 目录，可直接修改'
+        println '  4. 或者执行: java -jar java-all-call-graph-server.jar'
+        println '============================================================'
+        println ''
+    }
+}
+
+// 构建完成后打印信息
+bootJar.finalizedBy(printBuildInfo)
