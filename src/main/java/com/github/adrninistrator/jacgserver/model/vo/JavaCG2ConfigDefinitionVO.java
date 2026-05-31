@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * JavaCG2配置定义视图对象
+ * javacg2配置定义视图对象
  *
  * @author adrninistrator
  * @since 1.0.0

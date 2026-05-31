@@ -64,6 +64,11 @@ public class AnalysisExecutionRecord implements Serializable {
     private String errorMessage;
 
     /**
+     * 日志文件路径
+     */
+    private String logFilePath;
+
+    /**
      * 创建时间
      */
     private Date createTime;
@@ -167,5 +172,13 @@ public class AnalysisExecutionRecord implements Serializable {
 
     public void setUpdateTime(Date updateTime) {
         this.updateTime = updateTime;
+    }
+
+    public String getLogFilePath() {
+        return logFilePath;
+    }
+
+    public void setLogFilePath(String logFilePath) {
+        this.logFilePath = logFilePath;
     }
 }

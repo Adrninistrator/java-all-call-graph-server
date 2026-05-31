@@ -35,6 +35,11 @@ public class TemplateVO implements Serializable {
     private String direction;
 
     /**
+     * 是否为默认模板
+     */
+    private Boolean defaultTemplate;
+
+    /**
      * 创建时间
      */
     private String createTime;
@@ -103,5 +108,13 @@ public class TemplateVO implements Serializable {
 
     public void setJacgConfig(JACGConfigDTO jacgConfig) {
         this.jacgConfig = jacgConfig;
+    }
+
+    public Boolean getDefaultTemplate() {
+        return defaultTemplate;
+    }
+
+    public void setDefaultTemplate(Boolean defaultTemplate) {
+        this.defaultTemplate = defaultTemplate;
     }
 }

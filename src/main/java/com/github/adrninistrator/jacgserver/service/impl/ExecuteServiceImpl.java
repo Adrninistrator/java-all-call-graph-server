@@ -2,6 +2,7 @@ package com.github.adrninistrator.jacgserver.service.impl;
 
 import com.adrninistrator.jacg.conf.ConfigureWrapper;
 import com.adrninistrator.jacg.conf.enums.ConfigKeyEnum;
+import com.adrninistrator.jacg.dto.callgraph.MethodCallGraphFilePathInfo;
 import com.adrninistrator.jacg.dto.callstack.CallStackFileResult;
 import com.adrninistrator.jacg.findstack.FindCallStackTrace;
 import com.adrninistrator.jacg.runner.RunnerGenAllGraph4Callee;
@@ -15,6 +16,7 @@ import com.github.adrninistrator.jacgserver.exception.ProjectNotFoundException;
 import com.github.adrninistrator.jacgserver.exception.TemplateNotFoundException;
 import com.github.adrninistrator.jacgserver.model.entity.AnalysisExecutionRecord;
 import com.github.adrninistrator.jacgserver.model.entity.CallGraphExecutionRecord;
+import com.github.adrninistrator.jacgserver.model.entity.CallGraphFileInfo;
 import com.github.adrninistrator.jacgserver.model.entity.ExecutionRecord;
 import com.github.adrninistrator.jacgserver.model.entity.FindStackExecutionRecord;
 import com.github.adrninistrator.jacgserver.model.vo.ExecutionVO;
@@ -34,6 +36,7 @@ import javax.annotation.Resource;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -154,8 +157,10 @@ public class ExecuteServiceImpl implements ExecuteService {
 
             // 异步执行静态分析
             final Long dbRecordId = dbRecord.getId();
+            final String logFilePath = normalizePath(Constants.LOG_DIR + File.separator + projectId + File.separator + "writeDb_" + execId + ".log");
+            record.setLogFilePath(logFilePath);
             executorService.submit(() -> {
-                doExecuteAnalysis(projectId, execId, record, dbRecordId);
+                doExecuteAnalysis(projectId, execId, record, dbRecordId, logFilePath);
             });
 
             return convertToVO(record);
@@ -169,17 +174,16 @@ public class ExecuteServiceImpl implements ExecuteService {
     /**
      * 实际执行静态分析
      */
-    private void doExecuteAnalysis(String projectId, String execId, ExecutionRecord record, Long dbRecordId) {
-        // 通过编程式配置创建动态日志Appender（日志文件按项目ID分目录）
-        String logId = projectId + "_writeDb";
-        String logFilePath = Constants.LOG_DIR + File.separator + projectId + File.separator + "writeDb.log";
+    private void doExecuteAnalysis(String projectId, String execId, ExecutionRecord record, Long dbRecordId, String logFilePath) {
+        // 通过编程式配置创建动态日志Appender（日志文件按项目ID分目录，每次执行生成新文件）
+        String logId = projectId + "_writeDb_" + execId;
         ExecutionLoggerManager.createLogger(logId, logFilePath);
 
         try {
             String projectDir = configService.getProjectConfDir() + File.separator + projectId;
             
             // 直接从项目目录的配置文件读取配置
-            JavaCG2ConfigureWrapper javaCG2Wrapper = new JavaCG2ConfigureWrapper(false, projectDir);
+            JavaCG2ConfigureWrapper javacg2Wrapper = new JavaCG2ConfigureWrapper(false, projectDir);
             ConfigureWrapper jacgWrapper = new ConfigureWrapper(false, projectDir);
 
             // 设置输出根目录
@@ -187,7 +191,7 @@ public class ExecuteServiceImpl implements ExecuteService {
             jacgWrapper.setMainConfig(ConfigKeyEnum.CKE_OUTPUT_ROOT_PATH, outputRootPath);
 
             // 执行静态分析
-            RunnerWriteDb runnerWriteDb = new RunnerWriteDb(javaCG2Wrapper, jacgWrapper);
+            RunnerWriteDb runnerWriteDb = new RunnerWriteDb(javacg2Wrapper, jacgWrapper);
             boolean success = runnerWriteDb.run();
 
             // 计算执行耗时
@@ -206,7 +210,8 @@ public class ExecuteServiceImpl implements ExecuteService {
                     dbRecordId,
                     success ? Constants.EXEC_STATUS_COMPLETED : Constants.EXEC_STATUS_FAILED,
                     duration,
-                    success ? null : "静态分析执行失败");
+                    success ? null : "静态分析执行失败",
+                    logFilePath);
 
             logger.info("静态分析执行完成: projectId={}, execId={}, success={}, duration={}ms", projectId, execId, success, duration);
 
@@ -219,7 +224,7 @@ public class ExecuteServiceImpl implements ExecuteService {
             record.setErrorMessage(e.getMessage());
 
             // 更新数据库状态
-            executionRecordService.updateStatus(dbRecordId, Constants.EXEC_STATUS_FAILED, duration, e.getMessage());
+            executionRecordService.updateStatus(dbRecordId, Constants.EXEC_STATUS_FAILED, duration, e.getMessage(), logFilePath);
         } finally {
             // 移除日志Appender
             ExecutionLoggerManager.removeLogger(logId);
@@ -274,6 +279,11 @@ public class ExecuteServiceImpl implements ExecuteService {
         // 简单读取模板信息
         String projectId = readProjectIdFromTemplateInfo(templateInfoFile);
         String direction = readDirectionFromTemplateInfo(templateInfoFile);
+
+        // 默认模板不支持通过页面执行
+        if (isDefaultTemplate(templateInfoFile)) {
+            throw new ExecuteException("默认模板不支持通过页面执行，请使用MCP工具执行");
+        }
 
         // 检查项目是否正在执行
         if (isProjectExecuting(projectId)) {
@@ -366,9 +376,10 @@ public class ExecuteServiceImpl implements ExecuteService {
      * 实际执行调用链生成
      */
     private void doExecuteCallGraph(String templateId, String projectId, String direction, String execId, ExecutionRecord record, Long dbRecordId) {
-        // 通过编程式配置创建动态日志Appender（日志文件按项目ID分目录）
+        // 通过编程式配置创建动态日志Appender（日志文件按项目ID分目录，每次执行生成新文件）
         String logId = projectId + "_" + execId;
-        String logFilePath = Constants.LOG_DIR + File.separator + projectId + File.separator + execId + ".log";
+        String logFilePath = normalizePath(Constants.LOG_DIR + File.separator + projectId + File.separator +
+                "template_" + direction + "_" + templateId + "_" + execId + ".log");
         ExecutionLoggerManager.createLogger(logId, logFilePath);
 
         try {
@@ -417,6 +428,7 @@ public class ExecuteServiceImpl implements ExecuteService {
                     success ? Constants.EXEC_STATUS_COMPLETED : Constants.EXEC_STATUS_FAILED,
                     duration,
                     outputDir,
+                    logFilePath,
                     success ? null : "调用链生成失败");
 
             logger.info("调用链生成完成: templateId={}, execId={}, success={}, outputDir={}", templateId, execId, success, outputDir);
@@ -431,7 +443,7 @@ public class ExecuteServiceImpl implements ExecuteService {
 
             // 更新数据库状态
             templateExecutionRecordService.updateCallGraphStatus(
-                    dbRecordId, Constants.EXEC_STATUS_FAILED, duration, null, e.getMessage());
+                    dbRecordId, Constants.EXEC_STATUS_FAILED, duration, null, logFilePath, e.getMessage());
         } finally {
             // 移除日志Appender
             ExecutionLoggerManager.removeLogger(logId);
@@ -457,13 +469,15 @@ public class ExecuteServiceImpl implements ExecuteService {
             throw new ExecuteException("执行记录不存在: " + execId);
         }
 
-        String logPath;
-        if (Constants.EXEC_TYPE_ANALYSIS.equals(record.getType())) {
-            // 静态分析日志文件路径：./log/{projectId}/writeDb.log
-            logPath = Constants.LOG_DIR + File.separator + record.getProjectId() + File.separator + "writeDb.log";
-        } else {
-            // 调用链生成日志文件路径：./log/{projectId}/{execId}.log
-            logPath = Constants.LOG_DIR + File.separator + record.getProjectId() + File.separator + record.getExecId() + ".log";
+        // 优先使用记录中的日志文件路径
+        String logPath = record.getLogFilePath();
+        if (logPath == null || logPath.isEmpty()) {
+            // 兼容旧记录：使用旧命名规则
+            if (Constants.EXEC_TYPE_ANALYSIS.equals(record.getType())) {
+                logPath = Constants.LOG_DIR + File.separator + record.getProjectId() + File.separator + "writeDb.log";
+            } else {
+                logPath = Constants.LOG_DIR + File.separator + record.getProjectId() + File.separator + record.getExecId() + ".log";
+            }
         }
 
         return FileUtil.readLastLines(logPath, lines > 0 ? lines : 100);
@@ -610,6 +624,7 @@ public class ExecuteServiceImpl implements ExecuteService {
         vo.setStartTime(IdGenerator.formatTime(record.getStartTime()));
         vo.setEndTime(record.getEndTime() > 0 ? IdGenerator.formatTime(record.getEndTime()) : null);
         vo.setOutputDir(record.getOutputDir());
+        vo.setLogFilePath(record.getLogFilePath());
         vo.setErrorMessage(record.getErrorMessage());
         // 计算执行耗时
         if (record.getEndTime() > 0) {
@@ -640,6 +655,11 @@ public class ExecuteServiceImpl implements ExecuteService {
         // 简单读取模板信息
         String projectId = readProjectIdFromTemplateInfo(templateInfoFile);
         String direction = readDirectionFromTemplateInfo(templateInfoFile);
+
+        // 默认模板不支持通过页面执行
+        if (isDefaultTemplate(templateInfoFile)) {
+            throw new ExecuteException("默认模板不支持通过页面执行，请使用MCP工具执行");
+        }
 
         // 检查项目是否正在执行
         if (isProjectExecuting(projectId)) {
@@ -742,7 +762,7 @@ public class ExecuteServiceImpl implements ExecuteService {
     private void doExecuteFindStack(String templateId, String projectId, String direction, String execId, ExecutionRecord record, Long dbRecordId) {
         // 通过编程式配置创建动态日志Appender（日志文件按项目ID分目录）
         String logId = projectId + "_findstack_" + execId;
-        String logFilePath = Constants.LOG_DIR + File.separator + projectId + File.separator + execId + ".log";
+        String logFilePath = normalizePath(Constants.LOG_DIR + File.separator + projectId + File.separator + execId + ".log");
         ExecutionLoggerManager.createLogger(logId, logFilePath);
 
         try {
@@ -824,6 +844,344 @@ public class ExecuteServiceImpl implements ExecuteService {
         } catch (Exception e) {
             logger.warn("路径规范化失败: {}, 错误: {}", path, e.getMessage());
             return path;
+        }
+    }
+
+    /**
+     * 检查模板是否为默认模板
+     */
+    private boolean isDefaultTemplate(File templateInfoFile) {
+        try {
+            String content = FileUtil.readFile(templateInfoFile.getAbsolutePath());
+            if (content != null && content.contains("\"defaultTemplate\"")) {
+                int index = content.indexOf("\"defaultTemplate\"");
+                int colonIndex = content.indexOf(":", index);
+                int valueEnd = content.indexOf(",", colonIndex);
+                int valueEnd2 = content.indexOf("}", colonIndex);
+                int end = (valueEnd2 < valueEnd || valueEnd == -1) ? valueEnd2 : valueEnd;
+                if (end > colonIndex) {
+                    String value = content.substring(colonIndex + 1, end).trim();
+                    return "true".equalsIgnoreCase(value);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("读取模板默认标记失败", e);
+        }
+        return false;
+    }
+
+    /**
+     * 执行默认模板（供MCP工具调用，异步执行）
+     * 根据项目ID和方向找到默认模板，使用传入的入口类/方法替换配置后执行
+     *
+     * @param projectId 项目ID
+     * @param direction 调用链方向：caller(向下), callee(向上)
+     * @param entryMethods 入口类/方法列表
+     * @return 执行信息（包含执行ID）
+     */
+    public ExecutionVO executeDefaultTemplate(String projectId, String direction, List<String> entryMethods) {
+        // 检查项目是否存在
+        String projectDir = configService.getProjectConfDir() + File.separator + projectId;
+        if (!FileUtil.exists(projectDir)) {
+            throw new ProjectNotFoundException("项目不存在: " + projectId);
+        }
+
+        // 检查项目是否正在执行
+        if (isProjectExecuting(projectId)) {
+            throw new ExecuteException("项目正在执行静态分析，请稍后再试");
+        }
+
+        // 检查项目是否有成功的执行记录
+        AnalysisExecutionRecord latestSuccessRecord = executionRecordService.getLatestSuccessByProjectId(projectId);
+        if (latestSuccessRecord == null) {
+            throw new ExecuteException("当前项目没有成功的静态分析执行记录，请先执行静态分析");
+        }
+
+        // 查找默认模板目录
+        String defaultTemplateDir = findDefaultTemplateDir(projectId, direction);
+        if (defaultTemplateDir == null) {
+            throw new ConfigException("当前项目不存在" + (Constants.DIRECTION_CALLEE.equals(direction) ? "向上" : "向下") + "默认模板");
+        }
+
+        // 检查默认模板是否正在执行
+        String defaultTemplateId = getDefaultTemplateId(projectId, direction);
+        if (defaultTemplateId != null && isTemplateExecuting(defaultTemplateId)) {
+            throw new ExecuteException("默认模板正在执行，请稍后再试");
+        }
+
+        // 检查入口方法列表
+        if (entryMethods == null || entryMethods.isEmpty()) {
+            throw new ConfigException("入口类/方法不能为空");
+        }
+
+        String execId = IdGenerator.generateId();
+
+        // 设置模板执行标志
+        if (defaultTemplateId != null) {
+            templateExecutingFlags.put(defaultTemplateId, execId);
+        }
+
+        try {
+            // 创建执行记录
+            ExecutionRecord record = new ExecutionRecord();
+            record.setExecId(execId);
+            record.setProjectId(projectId);
+            record.setTemplateId(defaultTemplateId);
+            record.setType(Constants.EXEC_TYPE_CALLGRAPH);
+            record.setStatus(Constants.EXEC_STATUS_RUNNING);
+            record.setStartTime(System.currentTimeMillis());
+            executionRecords.put(execId, record);
+
+            // 创建数据库执行记录
+            CallGraphExecutionRecord dbRecord = new CallGraphExecutionRecord();
+            dbRecord.setExecId(execId);
+            dbRecord.setProjectId(projectId);
+            dbRecord.setTemplateId(defaultTemplateId);
+            dbRecord.setDirection(direction);
+            dbRecord.setEntryMethods(String.join("\n", entryMethods));
+            dbRecord.setStartTime(new Date());
+            dbRecord.setStatus(Constants.EXEC_STATUS_RUNNING);
+            templateExecutionRecordService.saveCallGraphRecord(dbRecord);
+
+            final Long dbRecordId = dbRecord.getId();
+            final String finalDefaultTemplateId = defaultTemplateId;
+
+            // 预先计算日志文件路径并设置到 record，使同步返回值包含 logFilePath
+            final String logFilePath = normalizePath(Constants.LOG_DIR + File.separator + projectId + File.separator +
+                    "template_" + direction + "_" + defaultTemplateId + "_" + execId + ".log");
+            record.setLogFilePath(logFilePath);
+
+            // 异步执行默认模板
+            executorService.submit(() -> {
+                doExecuteDefaultTemplate(defaultTemplateDir, projectId, direction, entryMethods, execId, record, dbRecordId, finalDefaultTemplateId);
+            });
+
+            return convertToVO(record);
+
+        } catch (Exception e) {
+            // 发生异常时清除执行标志
+            if (defaultTemplateId != null) {
+                templateExecutingFlags.remove(defaultTemplateId);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 实际执行默认模板（异步执行）
+     */
+    private void doExecuteDefaultTemplate(String defaultTemplateDir, String projectId, String direction,
+                                           List<String> entryMethods, String execId, ExecutionRecord record,
+                                           Long dbRecordId, String defaultTemplateId) {
+        // 通过编程式配置创建动态日志Appender（每次执行生成新文件）
+        String logId = projectId + "_default_" + execId;
+        String logFilePath = normalizePath(Constants.LOG_DIR + File.separator + projectId + File.separator +
+                "template_" + direction + "_" + defaultTemplateId + "_" + execId + ".log");
+        record.setLogFilePath(logFilePath);
+        ExecutionLoggerManager.createLogger(logId, logFilePath);
+
+        try {
+            // 从默认模板目录读取配置
+            ConfigureWrapper wrapper = new ConfigureWrapper(false, defaultTemplateDir);
+
+            // 设置输出根目录
+            String outputRootPath = configService.getOutputRootPath();
+            wrapper.setMainConfig(ConfigKeyEnum.CKE_OUTPUT_ROOT_PATH, outputRootPath);
+
+            // 固定设置
+            wrapper.setMainConfig(ConfigKeyEnum.CKE_CALL_GRAPH_WRITE_TO_FILE, "true");
+            wrapper.setMainConfig(ConfigKeyEnum.CKE_CALL_GRAPH_RETURN_IN_MEMORY, "false");
+
+            // 替换入口类/方法配置
+            com.adrninistrator.jacg.conf.enums.OtherConfigFileUseSetEnum entryPointsKey = Constants.DIRECTION_CALLER.equals(direction)
+                    ? com.adrninistrator.jacg.conf.enums.OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLER
+                    : com.adrninistrator.jacg.conf.enums.OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLEE;
+            wrapper.setOtherConfigSet(entryPointsKey, new java.util.LinkedHashSet<>(entryMethods));
+
+            boolean success;
+            String outputDir = null;
+            Map<String, MethodCallGraphFilePathInfo> methodCallGraphFilePathMap = null;
+
+            if (Constants.DIRECTION_CALLER.equals(direction)) {
+                RunnerGenAllGraph4Caller runner = new RunnerGenAllGraph4Caller(wrapper);
+                success = runner.run();
+                outputDir = normalizePath(runner.getCurrentOutputDirPath());
+                methodCallGraphFilePathMap = runner.getMethodCallGraphFilePathMap();
+            } else {
+                RunnerGenAllGraph4Callee runner = new RunnerGenAllGraph4Callee(wrapper);
+                success = runner.run();
+                outputDir = normalizePath(runner.getCurrentOutputDirPath());
+                methodCallGraphFilePathMap = runner.getMethodCallGraphFilePathMap();
+            }
+
+            // 计算执行耗时
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - record.getStartTime();
+
+            // 当执行失败时，从日志文件获取更具体的错误信息
+            String specificError = null;
+            if (!success) {
+                specificError = readErrorFromLogFile(logFilePath);
+            }
+            String errorMessage = specificError != null ? "默认模板调用链生成失败: " + specificError : "默认模板调用链生成失败";
+
+            // 更新执行状态（内存）
+            record.setStatus(success ? Constants.EXEC_STATUS_COMPLETED : Constants.EXEC_STATUS_FAILED);
+            record.setEndTime(endTime);
+            record.setOutputDir(outputDir);
+            if (!success) {
+                record.setErrorMessage(errorMessage);
+            }
+
+            // 将methodCallGraphFilePathMap保存到新表call_graph_file_info
+            if (methodCallGraphFilePathMap != null && !methodCallGraphFilePathMap.isEmpty() && success) {
+                saveCallGraphFileInfoList(dbRecordId, methodCallGraphFilePathMap);
+            }
+
+            // 更新数据库状态
+            templateExecutionRecordService.updateCallGraphStatus(
+                    dbRecordId,
+                    success ? Constants.EXEC_STATUS_COMPLETED : Constants.EXEC_STATUS_FAILED,
+                    duration,
+                    outputDir,
+                    logFilePath,
+                    success ? null : errorMessage);
+
+            logger.info("默认模板执行完成: projectId={}, direction={}, execId={}, success={}, outputDir={}", projectId, direction, execId, success, outputDir);
+
+        } catch (Exception e) {
+            logger.error("默认模板执行异常: projectId={}, direction={}, execId={}", projectId, direction, execId, e);
+            long endTime = System.currentTimeMillis();
+            long duration = endTime - record.getStartTime();
+            record.setStatus(Constants.EXEC_STATUS_FAILED);
+            record.setEndTime(endTime);
+            record.setErrorMessage(e.getMessage());
+
+            // 更新数据库状态
+            templateExecutionRecordService.updateCallGraphStatus(
+                    dbRecordId, Constants.EXEC_STATUS_FAILED, duration, null, logFilePath, e.getMessage());
+        } finally {
+            // 移除日志Appender
+            ExecutionLoggerManager.removeLogger(logId);
+
+            // 删除模板执行标志
+            if (defaultTemplateId != null) {
+                templateExecutingFlags.remove(defaultTemplateId);
+            }
+        }
+    }
+
+    /**
+     * 将方法调用链文件路径Map保存到call_graph_file_info表
+     *
+     * @param recordId 调用链执行记录ID
+     * @param methodCallGraphFilePathMap 方法调用链文件路径Map
+     */
+    private void saveCallGraphFileInfoList(Long recordId, Map<String, MethodCallGraphFilePathInfo> methodCallGraphFilePathMap) {
+        java.util.List<CallGraphFileInfo> fileInfoList = new java.util.ArrayList<>();
+        for (Map.Entry<String, MethodCallGraphFilePathInfo> entry : methodCallGraphFilePathMap.entrySet()) {
+            CallGraphFileInfo fileInfo = new CallGraphFileInfo();
+            fileInfo.setRecordId(recordId);
+            fileInfo.setEntryMethod(entry.getKey());
+            fileInfo.setOrigText(entry.getValue().getOrigText());
+            fileInfo.setFilePath(entry.getValue().getFilePath());
+            fileInfoList.add(fileInfo);
+        }
+        templateExecutionRecordService.saveCallGraphFileInfoList(recordId, fileInfoList);
+    }
+
+    /**
+     * 查找项目指定方向的默认模板ID
+     *
+     * @param projectId 项目ID
+     * @param direction 调用链方向
+     * @return 默认模板ID，不存在则返回null
+     */
+    public String getDefaultTemplateId(String projectId, String direction) {
+        String templatesDir = configService.getProjectConfDir() + File.separator + projectId + File.separator + Constants.TEMPLATES_DIR;
+        File templatesDirFile = new File(templatesDir);
+
+        if (!templatesDirFile.exists() || !templatesDirFile.isDirectory()) {
+            return null;
+        }
+
+        File[] templateDirs = templatesDirFile.listFiles(File::isDirectory);
+        if (templateDirs == null) {
+            return null;
+        }
+
+        for (File templateDir : templateDirs) {
+            File templateInfoFile = new File(templateDir, "template.json");
+            if (templateInfoFile.exists()) {
+                String content = FileUtil.readFile(templateInfoFile.getAbsolutePath());
+                if (content != null) {
+                    // 检查是否为默认模板
+                    if (content.contains("\"defaultTemplate\"") && isDefaultTemplate(templateInfoFile)) {
+                        // 检查方向是否匹配
+                        String templateDirection = readDirectionFromTemplateInfo(templateInfoFile);
+                        if (direction.equals(templateDirection)) {
+                            return templateDir.getName();
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 查找项目指定方向的默认模板目录
+     *
+     * @param projectId 项目ID
+     * @param direction 调用链方向
+     * @return 默认模板目录路径，不存在则返回null
+     */
+    private String findDefaultTemplateDir(String projectId, String direction) {
+        String defaultTemplateId = getDefaultTemplateId(projectId, direction);
+        if (defaultTemplateId != null) {
+            return findTemplateDir(defaultTemplateId);
+        }
+        return null;
+    }
+
+    /**
+     * 从日志文件中读取错误信息
+     * 当默认模板执行失败时，从日志文件中提取具体的ERROR信息，便于定位问题原因
+     *
+     * @param logFilePath 日志文件路径
+     * @return 错误信息，无错误时返回null
+     */
+    private String readErrorFromLogFile(String logFilePath) {
+        if (logFilePath == null) {
+            return null;
+        }
+        try {
+            File logFile = new File(logFilePath);
+            if (!logFile.exists() || !logFile.isFile()) {
+                return null;
+            }
+            List<String> lines = java.nio.file.Files.readAllLines(logFile.toPath());
+            List<String> errorLines = new java.util.ArrayList<>();
+            for (String line : lines) {
+                if (line.contains(" ERROR ") || line.contains(" 预检查失败 ") || line.contains(" 预处理失败 ") || line.contains(" 执行失败 ")) {
+                    // 去掉行首的时间戳等前缀，保留关键错误信息
+                    String trimmed = line.trim();
+                    if (trimmed.length() > 200) {
+                        trimmed = trimmed.substring(0, 200) + "...";
+                    }
+                    errorLines.add(trimmed);
+                }
+                if (errorLines.size() >= 5) {
+                    break;
+                }
+            }
+            if (!errorLines.isEmpty()) {
+                return String.join("; ", errorLines);
+            }
+            return null;
+        } catch (Exception e) {
+            logger.warn("读取日志文件失败: {}", logFilePath, e);
+            return null;
         }
     }
 }

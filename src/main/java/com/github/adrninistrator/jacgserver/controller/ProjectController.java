@@ -80,6 +80,19 @@ public class ProjectController {
     }
 
     /**
+     * 批量删除项目
+     */
+    @PostMapping("/batch-delete")
+    public ResponseResult batchDeleteProjects(@RequestBody Map<String, List<String>> request) {
+        List<String> projectIds = request.get("projectIds");
+        if (projectIds == null || projectIds.isEmpty()) {
+            return ResponseUtil.error(400, "请选择要删除的项目");
+        }
+        Map<String, Object> result = projectService.batchDeleteProjects(projectIds);
+        return ResponseUtil.success(result);
+    }
+
+    /**
      * 复制项目
      */
     @PostMapping("/{projectId}/copy")
@@ -88,4 +101,5 @@ public class ProjectController {
         ProjectVO project = projectService.copyProject(projectId, description);
         return ResponseUtil.success(project);
     }
+
 }

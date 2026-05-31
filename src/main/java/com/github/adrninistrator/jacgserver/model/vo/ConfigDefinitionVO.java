@@ -13,21 +13,21 @@ public class ConfigDefinitionVO implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * JavaCG2配置定义
+     * javacg2配置定义
      */
-    private JavaCG2ConfigDefinitionVO javaCG2;
+    private JavaCG2ConfigDefinitionVO javacg2;
 
     /**
-     * JACG配置定义
+     * jacg配置定义
      */
     private JACGConfigDefinitionVO jacg;
 
-    public JavaCG2ConfigDefinitionVO getJavaCG2() {
-        return javaCG2;
+    public JavaCG2ConfigDefinitionVO getJavacg2() {
+        return javacg2;
     }
 
-    public void setJavaCG2(JavaCG2ConfigDefinitionVO javaCG2) {
-        this.javaCG2 = javaCG2;
+    public void setJavacg2(JavaCG2ConfigDefinitionVO javacg2) {
+        this.javacg2 = javacg2;
     }
 
     public JACGConfigDefinitionVO getJacg() {

@@ -1,10 +1,10 @@
 # 单元测试配置文件
 
-# 使用临时目录作为测试输出目录
+# 使用项目根目录下的jacg-server-test作为测试输出目录
 jacgserver:
   output:
     root:
-      path: ${java.io.tmpdir}/jacg-server-test
+      path: ./build/jacg-server-test
 
 # 日志配置
 logging:

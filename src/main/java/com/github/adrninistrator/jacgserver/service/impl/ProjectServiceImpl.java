@@ -1,6 +1,7 @@
 package com.github.adrninistrator.jacgserver.service.impl;
 
 import com.adrninistrator.jacg.conf.enums.ConfigDbKeyEnum;
+import com.adrninistrator.javacg2.conf.enums.JavaCG2OtherConfigFileUseListEnum;
 import com.github.adrninistrator.jacgserver.constant.Constants;
 import com.github.adrninistrator.jacgserver.exception.ConfigException;
 import com.github.adrninistrator.jacgserver.exception.ExecuteException;
@@ -31,7 +32,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 项目管理服务实现类
@@ -72,8 +75,10 @@ public class ProjectServiceImpl implements ProjectService {
             ProjectVO projectVO = new ProjectVO();
             projectVO.setProjectId(item.getProjectId());
             projectVO.setDescription(item.getDescription());
-            projectVO.setCreateTime(item.getCreateTime());
-            projectVO.setUpdateTime(item.getUpdateTime());
+            projectVO.setProjectRootDir(item.getProjectRootDir());
+                projectVO.setCreateTime(item.getCreateTime());
+                projectVO.setUpdateTime(item.getUpdateTime());
+                projectVO.setCreatedByMcp(item.isCreatedByMcp());
             projectVOList.add(projectVO);
         }
 
@@ -101,18 +106,20 @@ public class ProjectServiceImpl implements ProjectService {
             for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
                 if (projectId.equals(item.getProjectId())) {
                     projectVO.setDescription(item.getDescription());
+                    projectVO.setProjectRootDir(item.getProjectRootDir());
                     projectVO.setCreateTime(item.getCreateTime());
                     projectVO.setUpdateTime(item.getUpdateTime());
+                    projectVO.setCreatedByMcp(item.isCreatedByMcp());
                     break;
                 }
             }
         }
 
         // 从库配置文件读取配置参数
-        JavaCG2ConfigDTO javaCG2Config = ConfigReaderUtil.readJavaCG2Config(projectDir);
+        JavaCG2ConfigDTO javacg2Config = ConfigReaderUtil.readJavaCG2Config(projectDir);
         JACGConfigDTO jacgConfig = ConfigReaderUtil.readJACGConfig(projectDir);
 
-        projectVO.setJavaCG2Config(javaCG2Config);
+        projectVO.setJavacg2Config(javacg2Config);
         projectVO.setJacgConfig(jacgConfig);
 
         return projectVO;
@@ -120,9 +127,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public ProjectVO createProject(ProjectDTO projectDTO) {
-        // 检查项目名称是否为空
+        // 检查项目描述是否为空
         if (projectDTO.getDescription() == null || projectDTO.getDescription().trim().isEmpty()) {
-            throw new ConfigException("项目名称不能为空");
+            throw new ConfigException("项目描述不能为空");
         }
 
         // 最早阶段生成项目ID，用于日志目录
@@ -147,13 +154,23 @@ public class ProjectServiceImpl implements ProjectService {
      * 实际创建项目的逻辑
      */
     private ProjectVO doCreateProject(String projectId, ProjectDTO projectDTO) {
-        // 检查项目名称是否重复
-        if (isProjectNameExists(projectDTO.getDescription(), null)) {
-            throw new ConfigException("项目名称已存在: " + projectDTO.getDescription());
+        // 检查项目描述是否重复
+        if (isProjectDescExists(projectDTO.getDescription(), null)) {
+            throw new ConfigException("项目描述已存在: " + projectDTO.getDescription());
+        }
+
+        // 规范化项目根目录
+        String canonicalProjectRootDir = canonicalizeProjectRootDir(projectDTO.getProjectRootDir());
+
+        // 检查项目根目录是否重复
+        if (canonicalProjectRootDir != null && isProjectRootDirExists(canonicalProjectRootDir, null)) {
+            ProjectListEntity.ProjectListItem existingItem = findProjectByRootDir(canonicalProjectRootDir);
+            String existInfo = existingItem != null ? "，已存在项目: " + existingItem.getDescription() + "（ID: " + existingItem.getProjectId() + "）" : "";
+            throw new ConfigException("项目根目录已存在: " + canonicalProjectRootDir + existInfo);
         }
 
         // 检查Jar/Class文件路径是否为空
-        if (!hasJarPaths(projectDTO.getJavaCG2Config())) {
+        if (!hasJarPaths(projectDTO.getJavacg2Config())) {
             throw new ConfigException("Jar/Class文件路径不能为空");
         }
 
@@ -172,22 +189,25 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         // 生成配置文件（使用库的标准格式）
-        if (projectDTO.getJavaCG2Config() != null) {
-            ConfigWriterUtil.writeJavaCG2Config(projectDir, projectDTO.getJavaCG2Config());
+        if (projectDTO.getJavacg2Config() != null) {
+            ConfigWriterUtil.writeJavaCG2Config(projectDir, projectDTO.getJavacg2Config());
         }
         if (projectDTO.getJacgConfig() != null) {
             ConfigWriterUtil.writeJACGConfig(projectDir, projectDTO.getJacgConfig());
         }
 
         // 更新项目列表
-        updateProjectList(projectId, projectDTO.getDescription(), currentTime, currentTime, false);
+        boolean createdByMcp = projectDTO.getCreatedByMcp() != null && projectDTO.getCreatedByMcp();
+        updateProjectList(projectId, projectDTO.getDescription(), canonicalProjectRootDir, currentTime, currentTime, false, createdByMcp);
 
         ProjectVO projectVO = new ProjectVO();
         projectVO.setProjectId(projectId);
         projectVO.setDescription(projectDTO.getDescription());
+        projectVO.setProjectRootDir(canonicalProjectRootDir);
         projectVO.setCreateTime(currentTime);
         projectVO.setUpdateTime(currentTime);
-        projectVO.setJavaCG2Config(projectDTO.getJavaCG2Config());
+        projectVO.setCreatedByMcp(createdByMcp);
+        projectVO.setJavacg2Config(projectDTO.getJavacg2Config());
         projectVO.setJacgConfig(projectDTO.getJacgConfig());
 
         logger.info("创建项目成功: projectId={}, description={}", projectId, projectDTO.getDescription());
@@ -206,18 +226,28 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ProjectNotFoundException("项目不存在: " + projectId);
         }
 
-        // 检查项目名称是否为空
+        // 检查项目描述是否为空
         if (projectDTO.getDescription() == null || projectDTO.getDescription().trim().isEmpty()) {
-            throw new ConfigException("项目名称不能为空");
+            throw new ConfigException("项目描述不能为空");
         }
 
-        // 检查项目名称是否重复（排除当前项目）
-        if (isProjectNameExists(projectDTO.getDescription(), projectId)) {
-            throw new ConfigException("项目名称已存在: " + projectDTO.getDescription());
+        // 检查项目描述是否重复（排除当前项目）
+        if (isProjectDescExists(projectDTO.getDescription(), projectId)) {
+            throw new ConfigException("项目描述已存在: " + projectDTO.getDescription());
+        }
+
+        // 规范化项目根目录
+        String canonicalProjectRootDir = canonicalizeProjectRootDir(projectDTO.getProjectRootDir());
+
+        // 检查项目根目录是否重复（排除当前项目）
+        if (canonicalProjectRootDir != null && isProjectRootDirExists(canonicalProjectRootDir, projectId)) {
+            ProjectListEntity.ProjectListItem existingItem = findProjectByRootDir(canonicalProjectRootDir);
+            String existInfo = existingItem != null ? "，已存在项目: " + existingItem.getDescription() + "（ID: " + existingItem.getProjectId() + "）" : "";
+            throw new ConfigException("项目根目录已存在: " + canonicalProjectRootDir + existInfo);
         }
 
         // 检查Jar/Class文件路径是否为空
-        if (!hasJarPaths(projectDTO.getJavaCG2Config())) {
+        if (!hasJarPaths(projectDTO.getJavacg2Config())) {
             throw new ConfigException("Jar/Class文件路径不能为空");
         }
 
@@ -241,8 +271,8 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         // 重新生成配置文件
-        if (projectDTO.getJavaCG2Config() != null) {
-            ConfigWriterUtil.writeJavaCG2Config(projectDir, projectDTO.getJavaCG2Config());
+        if (projectDTO.getJavacg2Config() != null) {
+            ConfigWriterUtil.writeJavaCG2Config(projectDir, projectDTO.getJavacg2Config());
         }
         if (projectDTO.getJacgConfig() != null) {
             ConfigWriterUtil.writeJACGConfig(projectDir, projectDTO.getJacgConfig());
@@ -251,8 +281,8 @@ public class ProjectServiceImpl implements ProjectService {
         // 复制项目的数据库配置文件到所有模板目录（项目与模板使用完全相同的数据库配置）
         copyDbConfigFileToAllTemplates(projectDir);
 
-        // 更新项目列表
-        updateProjectList(projectId, projectDTO.getDescription(), createTime, currentTime, true);
+        // 更新项目列表（更新时不修改createdByMcp）
+        updateProjectList(projectId, projectDTO.getDescription(), canonicalProjectRootDir, createTime, currentTime, true, false);
 
         logger.info("更新项目成功: projectId={}", projectId);
     }
@@ -336,6 +366,44 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
+    public void deleteProjectByMcp(String projectId) {
+        // 检查项目是否通过MCP创建
+        if (!isProjectCreatedByMcp(projectId)) {
+            throw new ConfigException("仅允许删除通过MCP创建的项目: " + projectId);
+        }
+
+        // 通过MCP删除项目，调用已有的删除方法
+        deleteProject(projectId);
+    }
+
+    @Override
+    public Map<String, Object> batchDeleteProjects(List<String> projectIds) {
+        int successCount = 0;
+        int failCount = 0;
+        List<Map<String, String>> errors = new ArrayList<>();
+
+        for (String projectId : projectIds) {
+            try {
+                deleteProject(projectId);
+                successCount++;
+            } catch (Exception e) {
+                failCount++;
+                Map<String, String> error = new HashMap<>();
+                error.put("projectId", projectId);
+                error.put("error", e.getMessage());
+                errors.add(error);
+                logger.warn("批量删除项目失败: projectId={}, error={}", projectId, e.getMessage());
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("successCount", successCount);
+        result.put("failCount", failCount);
+        result.put("errors", errors);
+        return result;
+    }
+
+    @Override
     public ProjectVO copyProject(String projectId, String description) {
         // 检查项目是否正在执行
         if (executeService.isProjectExecuting(projectId)) {
@@ -346,8 +414,9 @@ public class ProjectServiceImpl implements ProjectService {
 
         ProjectDTO projectDTO = new ProjectDTO();
         projectDTO.setDescription(description != null ? description : sourceProject.getDescription() + "-副本");
-        projectDTO.setJavaCG2Config(sourceProject.getJavaCG2Config());
+        projectDTO.setJavacg2Config(sourceProject.getJavacg2Config());
         projectDTO.setJacgConfig(sourceProject.getJacgConfig());
+        // 复制项目时不复制项目根目录（根目录全局唯一）
 
         return createProject(projectDTO);
     }
@@ -355,7 +424,7 @@ public class ProjectServiceImpl implements ProjectService {
     /**
      * 更新项目列表
      */
-    private void updateProjectList(String projectId, String description, String createTime, String updateTime, boolean isUpdate) {
+    private void updateProjectList(String projectId, String description, String projectRootDir, String createTime, String updateTime, boolean isUpdate, boolean createdByMcp) {
         String projectConfDir = configService.getProjectConfDir();
         if (!FileUtil.createDirectory(projectConfDir)) {
             throw new ConfigException("创建项目配置目录失败");
@@ -380,6 +449,7 @@ public class ProjectServiceImpl implements ProjectService {
             for (ProjectListEntity.ProjectListItem item : projects) {
                 if (projectId.equals(item.getProjectId())) {
                     item.setDescription(description);
+                    item.setProjectRootDir(projectRootDir);
                     item.setUpdateTime(updateTime);
                     break;
                 }
@@ -389,8 +459,10 @@ public class ProjectServiceImpl implements ProjectService {
             ProjectListEntity.ProjectListItem newItem = new ProjectListEntity.ProjectListItem();
             newItem.setProjectId(projectId);
             newItem.setDescription(description);
+            newItem.setProjectRootDir(projectRootDir);
             newItem.setCreateTime(createTime);
             newItem.setUpdateTime(updateTime);
+            newItem.setCreatedByMcp(createdByMcp);
             projects.add(newItem);
         }
 
@@ -420,13 +492,13 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     /**
-     * 检查项目名称是否已存在
+     * 检查项目描述是否已存在
      *
-     * @param description 项目名称
+     * @param description 项目描述
      * @param excludeProjectId 排除的项目ID（更新时使用）
      * @return true-已存在，false-不存在
      */
-    private boolean isProjectNameExists(String description, String excludeProjectId) {
+    private boolean isProjectDescExists(String description, String excludeProjectId) {
         if (description == null || description.isEmpty()) {
             return false;
         }
@@ -455,16 +527,151 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     /**
-     * 检查JavaCG2配置中是否有Jar路径配置
+     * 检查javacg2配置中是否有Jar路径配置
      *
-     * @param javaCG2Config JavaCG2配置
+     * @param javacg2Config javacg2配置
      * @return true-有配置，false-无配置
      */
-    private boolean hasJarPaths(JavaCG2ConfigDTO javaCG2Config) {
-        if (javaCG2Config == null || javaCG2Config.getListConfig() == null) {
+    private boolean hasJarPaths(JavaCG2ConfigDTO javacg2Config) {
+        if (javacg2Config == null || javacg2Config.getListConfig() == null) {
             return false;
         }
-        List<String> jarPaths = javaCG2Config.getListConfig().get("OCFULE_JAR_DIR");
+        List<String> jarPaths = javacg2Config.getListConfig().get(JavaCG2OtherConfigFileUseListEnum.OCFULE_JAR_DIR.name());
         return jarPaths != null && !jarPaths.isEmpty();
+    }
+
+    /**
+     * 规范化项目根目录路径
+     * 使用 File.getCanonicalPath() 规范化路径，处理 "."、".."、符号链接等
+     *
+     * @param projectRootDir 原始项目根目录路径
+     * @return 规范化后的路径，如果输入为空或空白则返回null
+     */
+    private String canonicalizeProjectRootDir(String projectRootDir) {
+        if (projectRootDir == null || projectRootDir.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return new File(projectRootDir.trim()).getCanonicalPath();
+        } catch (IOException e) {
+            logger.error("规范化项目根目录失败: {}", projectRootDir, e);
+            throw new ConfigException("项目根目录路径无效: " + projectRootDir);
+        }
+    }
+
+    /**
+     * 检查项目根目录是否已存在
+     *
+     * @param canonicalRootDir 规范化后的项目根目录
+     * @param excludeProjectId 排除的项目ID（更新时使用）
+     * @return true-已存在，false-不存在
+     */
+    private boolean isProjectRootDirExists(String canonicalRootDir, String excludeProjectId) {
+        if (canonicalRootDir == null || canonicalRootDir.isEmpty()) {
+            return false;
+        }
+        ProjectListEntity projectListEntity = loadProjectListEntity();
+        if (projectListEntity == null || projectListEntity.getProjects() == null) {
+            return false;
+        }
+
+        for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
+            if (canonicalRootDir.equals(item.getProjectRootDir())) {
+                if (excludeProjectId != null && excludeProjectId.equals(item.getProjectId())) {
+                    continue;
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 根据项目根目录查找项目
+     *
+     * @param canonicalRootDir 规范化后的项目根目录
+     * @return 匹配的项目列表项，未找到返回null
+     */
+    private ProjectListEntity.ProjectListItem findProjectByRootDir(String canonicalRootDir) {
+        if (canonicalRootDir == null || canonicalRootDir.isEmpty()) {
+            return null;
+        }
+        ProjectListEntity projectListEntity = loadProjectListEntity();
+        if (projectListEntity == null || projectListEntity.getProjects() == null) {
+            return null;
+        }
+
+        for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
+            if (canonicalRootDir.equals(item.getProjectRootDir())) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 加载项目列表实体
+     */
+    private ProjectListEntity loadProjectListEntity() {
+        String projectJsonPath = configService.getProjectConfDir() + File.separator + Constants.PROJECT_JSON_FILE;
+        File projectJsonFile = new File(projectJsonPath);
+        if (!projectJsonFile.exists()) {
+            return null;
+        }
+        return JsonUtil.fromFile(projectJsonFile, ProjectListEntity.class);
+    }
+
+    @Override
+    public Map<String, Object> queryProjectByRootDir(String projectRootDir) {
+        String canonicalRootDir = canonicalizeProjectRootDir(projectRootDir);
+        Map<String, Object> result = new HashMap<>();
+        result.put("found", false);
+
+        if (canonicalRootDir == null) {
+            return result;
+        }
+
+        ProjectListEntity.ProjectListItem item = findProjectByRootDir(canonicalRootDir);
+        if (item != null) {
+            result.put("found", true);
+            result.put("projectId", item.getProjectId());
+            result.put("description", item.getDescription());
+            result.put("projectRootDir", item.getProjectRootDir());
+            result.put("createTime", item.getCreateTime());
+            result.put("updateTime", item.getUpdateTime());
+        }
+
+        return result;
+    }
+
+    @Override
+    public boolean isProjectDescriptionExists(String description) {
+        return isProjectDescExists(description, null);
+    }
+
+    @Override
+    public boolean projectExists(String projectId) {
+        String projectDir = configService.getProjectConfDir() + File.separator + projectId;
+        return FileUtil.exists(projectDir);
+    }
+
+    /**
+     * 判断项目是否通过MCP创建
+     *
+     * @param projectId 项目ID
+     * @return true-通过MCP创建，false-通过HTTP创建
+     */
+    private boolean isProjectCreatedByMcp(String projectId) {
+        ProjectListEntity projectListEntity = loadProjectListEntity();
+        if (projectListEntity == null || projectListEntity.getProjects() == null) {
+            return false;
+        }
+
+        for (ProjectListEntity.ProjectListItem item : projectListEntity.getProjects()) {
+            if (projectId.equals(item.getProjectId())) {
+                return item.isCreatedByMcp();
+            }
+        }
+        return false;
     }
 }

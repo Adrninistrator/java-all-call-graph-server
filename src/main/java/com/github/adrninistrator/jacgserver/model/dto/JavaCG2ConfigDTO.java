@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * JavaCG2配置数据传输对象
+ * javacg2配置数据传输对象
  * 
  * 注意：mainConfig和elConfig的值类型为Object，以支持前端传入的Boolean等类型，
  * 在写入配置文件时会统一转换为字符串。

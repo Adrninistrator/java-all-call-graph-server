@@ -171,7 +171,7 @@ function renderListConfigTableWithValues(configs, prefix, currentValues) {
     // 确定EL配置类型（javacg2 或 jacg）
     let elConfigType = '';
     if (isElConfig) {
-        if (prefix.includes('javaCG2') || prefix.includes('javacg2')) {
+        if (prefix.includes('javacg2')) {
             elConfigType = 'javacg2';
         } else {
             elConfigType = 'jacg';
@@ -179,6 +179,11 @@ function renderListConfigTableWithValues(configs, prefix, currentValues) {
     }
     
     let html = '';
+    // EL配置时，在配置列表前添加"查看EL表达式通用说明"和组件通用说明按钮
+    if (isElConfig) {
+        const componentButtonLabel = elConfigType === 'javacg2' ? '查看JavaCG2表达式通用说明' : '查看JACG表达式通用说明';
+        html += `<div class="el-usage-button-container"><button type="button" class="btn-el-usage" onclick="showElUsage('${elConfigType}')">查看EL表达式通用说明</button><button type="button" class="btn-el-usage" onclick="showElUsageComponent('${elConfigType}')">${componentButtonLabel}</button></div>`;
+    }
     html += '<div class="config-list">';
     visibleConfigs.forEach(config => {
         // 获取当前值
@@ -196,7 +201,12 @@ function renderListConfigTableWithValues(configs, prefix, currentValues) {
         // 生成唯一ID用于textarea
         const textareaId = `textarea_${prefix.replace(/\./g, '_')}_${config.key}`;
         
-        html += '<div class="config-item">';
+        // 判断是否不可编辑
+        const isNotEditable = config.editable === false;
+        const disabledAttr = isNotEditable ? 'disabled' : '';
+        const rowStyle = isNotEditable ? 'style="opacity: 0.5;"' : '';
+        
+        html += `<div class="config-item" ${rowStyle}>`;
         
         // 上部：参数名和描述
         html += '<div class="config-item-header">';
@@ -215,9 +225,9 @@ function renderListConfigTableWithValues(configs, prefix, currentValues) {
         // 下部：值编辑区（使用textarea，适合多行输入）
         html += '<div class="config-item-value">';
         if (isElConfig) {
-            html += `<textarea id="${textareaId}" class="config-textarea el-textarea" name="${prefix}.${config.key}" placeholder="右键支持表达式快捷输入">${currentValueText}</textarea>`;
+            html += `<textarea id="${textareaId}" class="config-textarea el-textarea" name="${prefix}.${config.key}" placeholder="右键支持表达式快捷输入" ${disabledAttr}>${currentValueText}</textarea>`;
         } else {
-            html += `<textarea class="config-textarea" name="${prefix}.${config.key}" placeholder="每行一个值">${currentValueText}</textarea>`;
+            html += `<textarea class="config-textarea" name="${prefix}.${config.key}" placeholder="每行一个值" ${disabledAttr}>${currentValueText}</textarea>`;
         }
         html += '</div>';
         
@@ -475,9 +485,9 @@ function initDependencyRules() {
 }
 
 /**
- * 收集JavaCG2配置数据
+ * 收集javacg2配置数据
  */
-function collectJavaCG2Config() {
+function collectJavacg2Config() {
     const configModalBody = document.getElementById('configModalBody');
     if (!configModalBody || configModalBody.innerHTML === '') {
         return null;
@@ -491,7 +501,7 @@ function collectJavaCG2Config() {
     };
 
     // 收集主配置
-    const mainConfigInputs = configModalBody.querySelectorAll('[name^="javaCG2.mainConfig."]');
+    const mainConfigInputs = configModalBody.querySelectorAll('[name^="javacg2.mainConfig."]');
     mainConfigInputs.forEach(input => {
         if (input.type === 'radio' && !input.checked) return;
         const key = input.getAttribute('data-config-key');
@@ -501,10 +511,10 @@ function collectJavaCG2Config() {
     });
 
     // 收集列表配置
-    const listConfigTextareas = configModalBody.querySelectorAll('[name^="javaCG2.listConfig."]');
+    const listConfigTextareas = configModalBody.querySelectorAll('[name^="javacg2.listConfig."]');
     listConfigTextareas.forEach(textarea => {
         const name = textarea.getAttribute('name');
-        const key = name.replace('javaCG2.listConfig.', '');
+        const key = name.replace('javacg2.listConfig.', '');
         const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l);
         if (lines.length > 0) {
             config.listConfig[key] = lines;
@@ -512,10 +522,10 @@ function collectJavaCG2Config() {
     });
 
     // 收集Set配置
-    const setConfigTextareas = configModalBody.querySelectorAll('[name^="javaCG2.setConfig."]');
+    const setConfigTextareas = configModalBody.querySelectorAll('[name^="javacg2.setConfig."]');
     setConfigTextareas.forEach(textarea => {
         const name = textarea.getAttribute('name');
-        const key = name.replace('javaCG2.setConfig.', '');
+        const key = name.replace('javacg2.setConfig.', '');
         const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l);
         if (lines.length > 0) {
             config.setConfig[key] = lines;
@@ -523,10 +533,10 @@ function collectJavaCG2Config() {
     });
 
     // 收集EL配置（EL表达式配置为单个字符串，不需要按行分割）
-    const elConfigTextareas = configModalBody.querySelectorAll('[name^="javaCG2.elConfig."]');
+    const elConfigTextareas = configModalBody.querySelectorAll('[name^="javacg2.elConfig."]');
     elConfigTextareas.forEach(textarea => {
         const name = textarea.getAttribute('name');
-        const key = name.replace('javaCG2.elConfig.', '');
+        const key = name.replace('javacg2.elConfig.', '');
         const value = textarea.value.trim();
         if (value) {
             config.elConfig[key] = value;
@@ -537,9 +547,9 @@ function collectJavaCG2Config() {
 }
 
 /**
- * 收集JACG配置数据
+ * 收集jacg配置数据
  */
-function collectJACGConfig() {
+function collectJacgConfig() {
     const configModalBody = document.getElementById('configModalBody');
     if (!configModalBody || configModalBody.innerHTML === '') {
         return null;
@@ -624,7 +634,6 @@ function collectTemplateConfig() {
 
     const config = {
         mainConfig: {},
-        dbConfig: {},
         listConfig: {},
         setConfig: {},
         elConfig: {}
@@ -640,23 +649,8 @@ function collectTemplateConfig() {
         }
     });
 
-    // 收集数据库配置
-    // 注意：模板的数据库配置不允许人工编辑，后端会自动使用项目的数据库配置覆盖
-    // 但前端仍然需要收集当前显示的值（只读），以便后端处理
-    const dbConfigInputs = configModalBody.querySelectorAll('[name^="template.dbConfig."]');
-    dbConfigInputs.forEach(input => {
-        if (input.type === 'radio' && !input.checked) return;
-        const key = input.getAttribute('data-config-key');
-        if (key) {
-            config.dbConfig[key] = input.value;
-        }
-    });
-    
-    // 对于模板配置，数据库配置需要使用项目的值
-    // 后端会自动覆盖，但前端也需要确保传递正确的值
-    if (currentProject && currentProject.jacgConfig && currentProject.jacgConfig.dbConfig) {
-        config.dbConfig = Object.assign({}, currentProject.jacgConfig.dbConfig);
-    }
+    // 模板的数据库配置不允许人工编辑，前端不收集dbConfig
+    // 后端会自动使用项目的数据库配置覆盖模板的数据库配置
 
     // 收集列表配置
     const listConfigTextareas = configModalBody.querySelectorAll('[name^="template.listConfig."]');
@@ -680,22 +674,22 @@ function collectTemplateConfig() {
         }
     });
 
-    // 收集EL配置
+    // 收集EL配置（EL表达式配置为单个字符串，不需要按行分割）
     const elConfigTextareas = configModalBody.querySelectorAll('[name^="template.elConfig."]');
     elConfigTextareas.forEach(textarea => {
         const name = textarea.getAttribute('name');
         const key = name.replace('template.elConfig.', '');
-        const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l);
-        if (lines.length > 0) {
-            config.elConfig[key] = lines;
+        const value = textarea.value.trim();
+        if (value) {
+            config.elConfig[key] = value;
         }
     });
 
     // 对于模板配置，确保 CKE_APP_NAME 使用项目中的值
     if (currentProject && currentProject.jacgConfig && currentProject.jacgConfig.mainConfig) {
-        const projectAppName = currentProject.jacgConfig.mainConfig['CKE_APP_NAME'];
+        const projectAppName = currentProject.jacgConfig.mainConfig[JacgEnum.CKE_APP_NAME];
         if (projectAppName !== undefined) {
-            config.mainConfig['CKE_APP_NAME'] = projectAppName;
+            config.mainConfig[JacgEnum.CKE_APP_NAME] = projectAppName;
         }
     }
 

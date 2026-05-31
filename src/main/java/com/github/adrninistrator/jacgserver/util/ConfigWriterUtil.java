@@ -1,13 +1,17 @@
 package com.github.adrninistrator.jacgserver.util;
 
+import com.adrninistrator.jacg.conf.ConfChecker;
 import com.adrninistrator.jacg.conf.ConfigureWrapper;
 import com.adrninistrator.jacg.conf.enums.ConfigDbKeyEnum;
 import com.adrninistrator.jacg.conf.enums.ConfigKeyEnum;
 import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseListEnum;
 import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseSetEnum;
 import com.adrninistrator.jacg.conf.writer.JACGConfigWriter;
+import com.adrninistrator.jacg.dboper.DbInitializer;
+import com.adrninistrator.jacg.dboper.DbOperWrapper;
 import com.adrninistrator.jacg.el.constants.ElConstants;
 import com.adrninistrator.jacg.el.enums.ElConfigEnum;
+import com.adrninistrator.javacg2.conf.JavaCG2ConfManager;
 import com.adrninistrator.javacg2.conf.JavaCG2ConfigureWrapper;
 import com.adrninistrator.javacg2.conf.enums.JavaCG2ConfigKeyEnum;
 import com.adrninistrator.javacg2.conf.enums.JavaCG2OtherConfigFileUseListEnum;
@@ -15,6 +19,8 @@ import com.adrninistrator.javacg2.conf.enums.JavaCG2OtherConfigFileUseSetEnum;
 import com.adrninistrator.javacg2.conf.writer.JavaCG2ConfigWriter;
 import com.adrninistrator.javacg2.el.constants.JavaCG2ElConstants;
 import com.adrninistrator.javacg2.el.enums.JavaCG2ElConfigEnum;
+import com.adrninistrator.javacg2.exceptions.JavaCG2ConfigException;
+import com.github.adrninistrator.jacgserver.constant.ComponentEnum;
 import com.github.adrninistrator.jacgserver.exception.ConfigConvertException;
 import com.github.adrninistrator.jacgserver.exception.ConfigWriteException;
 import com.github.adrninistrator.jacgserver.model.dto.JACGConfigDTO;
@@ -71,6 +77,13 @@ public class ConfigWriterUtil {
     private static void doWriteJavaCG2Config(String projectDir, JavaCG2ConfigDTO config) {
         // 创建JavaCG2ConfigureWrapper并设置配置值（转换异常会抛出）
         JavaCG2ConfigureWrapper wrapper = createJavaCG2ConfigureWrapper(config);
+
+        // 调用JavaCG2ConfManager.getConfInfo()校验配置参数，若出现JavaCG2ConfigException则返回修改项目配置参数失败
+        try {
+            JavaCG2ConfManager.getConfInfo(wrapper);
+        } catch (JavaCG2ConfigException e) {
+            throw new ConfigConvertException("修改项目配置参数失败: " + e.getMessage(), e);
+        }
         
         // 检查表达式配置参数（检查不通过会抛出异常）
         ElConfigValidator.validateJavaCG2ElConfig(wrapper);
@@ -81,19 +94,19 @@ public class ConfigWriterUtil {
         
         // 写入配置文件并检查返回值
         if (!configWriter.genMainConfig(JavaCG2ConfigKeyEnum.values())) {
-            throw new ConfigWriteException("JavaCG2主配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JAVACG2.getShortName() + "主配置文件写入失败");
         }
         if (!configWriter.genOtherConfig(JavaCG2OtherConfigFileUseListEnum.values())) {
-            throw new ConfigWriteException("JavaCG2列表配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JAVACG2.getShortName() + "列表配置文件写入失败");
         }
         if (!configWriter.genOtherConfig(JavaCG2OtherConfigFileUseSetEnum.values())) {
-            throw new ConfigWriteException("JavaCG2 Set配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JAVACG2.getShortName() + " Set配置文件写入失败");
         }
         if (!configWriter.genElConfig(JavaCG2ElConfigEnum.values(), JavaCG2ElConstants.getElDirUsageMap())) {
-            throw new ConfigWriteException("JavaCG2 EL配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JAVACG2.getShortName() + " EL配置文件写入失败");
         }
 
-        logger.info("JavaCG2配置文件写入完成: {}", projectDir);
+        logger.info("{}配置文件写入完成: {}", ComponentEnum.JAVACG2.getShortName(), projectDir);
     }
 
     /**
@@ -114,7 +127,7 @@ public class ConfigWriterUtil {
                 try {
                     configKeyEnum = JavaCG2ConfigKeyEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JavaCG2主配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JAVACG2.getShortName() + "主配置项: " + entry.getKey(), e);
                 }
                 // 将值转换为字符串（处理Boolean等非String类型）
                 String value = entry.getValue() != null ? String.valueOf(entry.getValue()) : null;
@@ -130,7 +143,7 @@ public class ConfigWriterUtil {
                 try {
                     configEnum = JavaCG2OtherConfigFileUseListEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JavaCG2 List配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JAVACG2.getShortName() + " List配置项: " + entry.getKey(), e);
                 }
                 wrapper.setOtherConfigList(configEnum, entry.getValue());
             }
@@ -144,7 +157,7 @@ public class ConfigWriterUtil {
                 try {
                     configEnum = JavaCG2OtherConfigFileUseSetEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JavaCG2 Set配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JAVACG2.getShortName() + " Set配置项: " + entry.getKey(), e);
                 }
                 // 转换为Set
                 Set<String> valueSet = new HashSet<>(entry.getValue());
@@ -160,10 +173,9 @@ public class ConfigWriterUtil {
                 try {
                     configEnum = JavaCG2ElConfigEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JavaCG2 EL配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JAVACG2.getShortName() + " EL配置项: " + entry.getKey(), e);
                 }
-                // 将值转换为字符串（处理Boolean等非String类型）
-                String value = entry.getValue() != null ? String.valueOf(entry.getValue()) : null;
+                String value = convertElConfigValue(entry.getValue());
                 wrapper.setElConfigText(configEnum, value);
             }
         }
@@ -195,6 +207,28 @@ public class ConfigWriterUtil {
         // 创建ConfigureWrapper并设置配置值（转换异常会抛出）
         ConfigureWrapper wrapper = createConfigureWrapper(configDir, config);
 
+        // 调用DbInitializer.genDbOperWrapper验证数据库配置是否正确，参数2固定使用true
+        // 仅在以下情况需要验证：
+        // 1. 使用非H2数据库
+        // 2. 使用H2数据库，且对应数据库文件已存在（在H2数据库文件路径后加上".mv.db"判断是否存在）
+        if (needValidateDbConfig(wrapper)) {
+            try {
+                DbOperWrapper dbOperWrapper = DbInitializer.genDbOperWrapper(wrapper, false, true, ConfigWriterUtil.class);
+                if (dbOperWrapper != null) {
+                    dbOperWrapper.getDbOperator().close();
+                }
+            } catch (Exception e) {
+                throw new ConfigConvertException("修改项目配置参数失败，数据库配置不正确: " + e.getMessage(), e);
+            }
+        }
+
+        // 调用ConfChecker.checkAll检查配置参数，若出现异常则返回修改项目配置参数失败
+        try {
+            ConfChecker.checkAll(wrapper);
+        } catch (Exception e) {
+            throw new ConfigConvertException("修改项目配置参数失败: " + e.getMessage(), e);
+        }
+
         // 检查表达式配置参数（检查不通过会抛出异常）
         ElConfigValidator.validateJACGElConfig(wrapper);
 
@@ -204,22 +238,58 @@ public class ConfigWriterUtil {
 
         // 写入配置文件并检查返回值
         if (!configWriter.genMainConfig(ConfigKeyEnum.values())) {
-            throw new ConfigWriteException("JACG主配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JACG.getShortName() + "主配置文件写入失败");
         }
         if (!configWriter.genMainConfig(ConfigDbKeyEnum.values())) {
-            throw new ConfigWriteException("JACG数据库配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JACG.getShortName() + "数据库配置文件写入失败");
         }
         if (!configWriter.genOtherConfig(OtherConfigFileUseListEnum.values())) {
-            throw new ConfigWriteException("JACG列表配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JACG.getShortName() + "列表配置文件写入失败");
         }
         if (!configWriter.genOtherConfig(OtherConfigFileUseSetEnum.values())) {
-            throw new ConfigWriteException("JACG Set配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JACG.getShortName() + " Set配置文件写入失败");
         }
         if (!configWriter.genElConfig(ElConfigEnum.values(), ElConstants.getElDirUsageMap())) {
-            throw new ConfigWriteException("JACG EL配置文件写入失败");
+            throw new ConfigWriteException(ComponentEnum.JACG.getShortName() + " EL配置文件写入失败");
         }
 
-        logger.info("JACG配置文件写入完成: {}", configDir);
+        logger.info("{}配置文件写入完成: {}", ComponentEnum.JACG.getShortName(), configDir);
+    }
+
+    /**
+     * 判断是否需要验证数据库配置
+     * 仅在以下情况需要验证：
+     * 1. 使用非H2数据库
+     * 2. 使用H2数据库，且对应数据库文件已存在（在H2数据库文件路径后加上".mv.db"判断是否存在）
+     *
+     * @param wrapper ConfigureWrapper对象
+     * @return 是否需要验证
+     */
+    private static boolean needValidateDbConfig(ConfigureWrapper wrapper) {
+        boolean useH2 = wrapper.getMainConfig(ConfigDbKeyEnum.CDKE_DB_USE_H2);
+        if (!useH2) {
+            // 使用非H2数据库，需要验证
+            logger.info("使用非H2数据库，需要验证数据库配置");
+            return true;
+        }
+
+        // 使用H2数据库，判断数据库文件是否已存在
+        String h2FilePath = wrapper.getMainConfig(ConfigDbKeyEnum.CDKE_DB_H2_FILE_PATH);
+        if (h2FilePath == null || h2FilePath.isEmpty()) {
+            logger.info("使用H2数据库，H2文件路径为空，不需要验证数据库配置");
+            return false;
+        }
+
+        // 在H2数据库文件路径后加上".mv.db"判断是否存在
+        String h2MvDbFilePath = h2FilePath + ".mv.db";
+        File h2MvDbFile = new File(h2MvDbFilePath);
+        if (h2MvDbFile.exists()) {
+            logger.info("使用H2数据库，数据库文件已存在: {}，需要验证数据库配置", h2MvDbFilePath);
+            return true;
+        }
+
+        logger.info("使用H2数据库，数据库文件不存在: {}，不需要验证数据库配置", h2MvDbFilePath);
+        return false;
     }
 
     /**
@@ -241,7 +311,7 @@ public class ConfigWriterUtil {
                 try {
                     configKeyEnum = ConfigKeyEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JACG主配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JACG.getShortName() + "主配置项: " + entry.getKey(), e);
                 }
                 // 将值转换为字符串（处理Boolean等非String类型）
                 String value = entry.getValue() != null ? String.valueOf(entry.getValue()) : null;
@@ -257,7 +327,7 @@ public class ConfigWriterUtil {
                 try {
                     configDbKeyEnum = ConfigDbKeyEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JACG数据库配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JACG.getShortName() + "数据库配置项: " + entry.getKey(), e);
                 }
                 // 将值转换为字符串（处理Boolean等非String类型）
                 String value = entry.getValue() != null ? String.valueOf(entry.getValue()) : null;
@@ -294,7 +364,7 @@ public class ConfigWriterUtil {
                 try {
                     configEnum = OtherConfigFileUseListEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JACG List配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JACG.getShortName() + " List配置项: " + entry.getKey(), e);
                 }
                 wrapper.setOtherConfigList(configEnum, entry.getValue());
             }
@@ -308,7 +378,7 @@ public class ConfigWriterUtil {
                 try {
                     configEnum = OtherConfigFileUseSetEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JACG Set配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JACG.getShortName() + " Set配置项: " + entry.getKey(), e);
                 }
                 // 转换为Set
                 Set<String> valueSet = new HashSet<>(entry.getValue());
@@ -324,14 +394,38 @@ public class ConfigWriterUtil {
                 try {
                     configEnum = ElConfigEnum.valueOf(entry.getKey());
                 } catch (IllegalArgumentException e) {
-                    throw new ConfigConvertException("未知的JACG EL配置项: " + entry.getKey(), e);
+                    throw new ConfigConvertException("未知的" + ComponentEnum.JACG.getShortName() + " EL配置项: " + entry.getKey(), e);
                 }
-                // 将值转换为字符串（处理Boolean等非String类型）
-                String value = entry.getValue() != null ? String.valueOf(entry.getValue()) : null;
+                String value = convertElConfigValue(entry.getValue());
                 wrapper.setElConfigText(configEnum, value);
             }
         }
         
         return wrapper;
+    }
+
+    /**
+     * 将EL配置值转换为字符串
+     * EL表达式配置为单个字符串，若前端传入List（如["false"]），需要提取第一个元素而非使用toString()
+     * 避免List.toString()产生"[false]"格式导致EL解析失败
+     *
+     * @param value EL配置值（可能是String、Boolean、List等类型）
+     * @return 字符串形式的EL配置值
+     */
+    private static String convertElConfigValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        // 若值为List类型，取第一个元素（EL配置为单个字符串，不应为数组）
+        if (value instanceof List) {
+            List<?> list = (List<?>) value;
+            if (list.isEmpty()) {
+                return null;
+            }
+            // 取第一个元素并转换为字符串
+            Object first = list.get(0);
+            return first != null ? first.toString() : null;
+        }
+        return value.toString();
     }
 }

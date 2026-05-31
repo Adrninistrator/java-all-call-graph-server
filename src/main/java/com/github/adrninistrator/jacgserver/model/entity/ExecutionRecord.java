@@ -57,6 +57,11 @@ public class ExecutionRecord implements Serializable {
      */
     private String errorMessage;
 
+    /**
+     * 日志文件路径
+     */
+    private String logFilePath;
+
     public String getExecId() {
         return execId;
     }
@@ -127,5 +132,13 @@ public class ExecutionRecord implements Serializable {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getLogFilePath() {
+        return logFilePath;
+    }
+
+    public void setLogFilePath(String logFilePath) {
+        this.logFilePath = logFilePath;
     }
 }

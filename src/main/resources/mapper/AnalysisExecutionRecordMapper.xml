@@ -13,12 +13,13 @@
         <result column="status" property="status"/>
         <result column="duration" property="duration"/>
         <result column="error_message" property="errorMessage"/>
+        <result column="log_file_path" property="logFilePath"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
 
     <sql id="Base_Column_List">
-        id, exec_id, project_id, project_desc, jar_files, start_time, end_time, status, duration, error_message, create_time, update_time
+        id, exec_id, project_id, project_desc, jar_files, start_time, end_time, status, duration, error_message, log_file_path, create_time, update_time
     </sql>
 
     <insert id="insert" parameterType="com.github.adrninistrator.jacgserver.model.entity.AnalysisExecutionRecord"
@@ -33,6 +34,7 @@
             status,
             duration,
             error_message,
+            log_file_path,
             create_time,
             update_time
         ) VALUES (
@@ -45,6 +47,7 @@
             #{status},
             #{duration},
             #{errorMessage},
+            #{logFilePath},
             #{createTime},
             #{updateTime}
         )
@@ -91,6 +94,7 @@
             end_time = #{endTime},
             duration = #{duration},
             error_message = #{errorMessage},
+            log_file_path = #{logFilePath},
             update_time = CURRENT_TIMESTAMP
         WHERE id = #{id}
     </update>

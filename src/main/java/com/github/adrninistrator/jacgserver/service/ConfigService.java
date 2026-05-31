@@ -32,6 +32,16 @@ public interface ConfigService {
     ConfigDefinitionVO getConfigDefinitions(ConfigSceneEnum scene);
 
     /**
+     * 获取配置参数定义（指定场景，可选忽略可见性过滤）
+     * 当ignoreVisibility为true时，返回所有配置参数，不过滤模板场景下的不可见参数
+     *
+     * @param scene           配置场景（PROJECT/TEMPLATE）
+     * @param ignoreVisibility 是否忽略可见性过滤
+     * @return 配置参数定义
+     */
+    ConfigDefinitionVO getConfigDefinitions(ConfigSceneEnum scene, boolean ignoreVisibility);
+
+    /**
      * 获取输出根目录
      *
      * @return 输出根目录
@@ -103,4 +113,20 @@ public interface ConfigService {
      * @return 包含 paramName、fileName、descriptions 的Map
      */
     Map<String, Object> getFindStackKeywordConfigDetail(String direction);
+
+    /**
+     * 获取EL表达式通用说明文件内容（_el_example/el_usage.md）
+     *
+     * @param type 配置类型（javacg2/jacg）
+     * @return el_usage.md文件内容，如果不存在返回null
+     */
+    String getElUsageContent(String type);
+
+    /**
+     * 获取EL表达式组件通用说明文件内容（_el_example/el_usage_javacg2.md 或 _el_example/el_usage_jacg.md）
+     *
+     * @param type 配置类型（javacg2/jacg）
+     * @return 组件通用说明文件内容，如果不存在返回null
+     */
+    String getElUsageComponentContent(String type);
 }

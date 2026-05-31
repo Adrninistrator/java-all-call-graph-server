@@ -85,4 +85,21 @@ public final class Constants {
      * 日志目录
      */
     public static final String LOG_DIR = "./log";
+
+    /**
+     * 默认模板描述与ID - 向上调用链
+     */
+    public static final String DEFAULT_TEMPLATE_DESC_4EE = "default_template_4ee";
+
+    /**
+     * 默认模板描述与ID - 向下调用链
+     */
+    public static final String DEFAULT_TEMPLATE_DESC_4ER = "default_template_4er";
+
+    /**
+     * 默认模板入口类/方法占位符
+     * 默认模板的OCFUSE_METHOD_CLASS_4CALLEE/OCFUSE_METHOD_CLASS_4CALLER配置参数使用此占位符，
+     * 执行时由MCP工具指定实际的入口类/方法替换
+     */
+    public static final String DEFAULT_TEMPLATE_ENTRY_PLACEHOLDER = "${place_holder}";
 }

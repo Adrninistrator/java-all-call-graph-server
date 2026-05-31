@@ -34,6 +34,11 @@ public class TemplateInfoEntity implements Serializable {
     private String direction;
 
     /**
+     * 是否为默认模板
+     */
+    private Boolean defaultTemplate;
+
+    /**
      * 创建时间
      */
     private String createTime;
@@ -89,5 +94,13 @@ public class TemplateInfoEntity implements Serializable {
 
     public void setUpdateTime(String updateTime) {
         this.updateTime = updateTime;
+    }
+
+    public Boolean getDefaultTemplate() {
+        return defaultTemplate;
+    }
+
+    public void setDefaultTemplate(Boolean defaultTemplate) {
+        this.defaultTemplate = defaultTemplate;
     }
 }

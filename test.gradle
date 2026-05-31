@@ -1,0 +1,12 @@
+// test.gradle
+// 测试相关配置：设置UTF-8编码
+
+test {
+    // 设置Java应用使用UTF-8编码，避免中文环境下的编码问题
+    systemProperty 'file.encoding', 'UTF-8'
+    systemProperty 'sun.jnu.encoding', 'UTF-8'
+
+    // JVM参数设置UTF-8编码
+    jvmArgs '-Dfile.encoding=UTF-8'
+    jvmArgs '-Dsun.jnu.encoding=UTF-8'
+}

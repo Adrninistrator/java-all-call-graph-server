@@ -81,7 +81,8 @@ public interface AnalysisExecutionRecordMapper {
             @Param("status") String status,
             @Param("endTime") Date endTime,
             @Param("duration") Long duration,
-            @Param("errorMessage") String errorMessage);
+            @Param("errorMessage") String errorMessage,
+            @Param("logFilePath") String logFilePath);
 
     /**
      * 查询项目最近一条成功的执行记录

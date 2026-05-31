@@ -23,6 +23,11 @@ public class TemplateDTO implements Serializable {
     private String direction;
 
     /**
+     * 是否为默认模板
+     */
+    private Boolean defaultTemplate;
+
+    /**
      * JACG配置
      */
     private JACGConfigDTO jacgConfig;
@@ -49,5 +54,13 @@ public class TemplateDTO implements Serializable {
 
     public void setJacgConfig(JACGConfigDTO jacgConfig) {
         this.jacgConfig = jacgConfig;
+    }
+
+    public Boolean getDefaultTemplate() {
+        return defaultTemplate;
+    }
+
+    public void setDefaultTemplate(Boolean defaultTemplate) {
+        this.defaultTemplate = defaultTemplate;
     }
 }

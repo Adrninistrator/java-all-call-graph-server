@@ -1,6 +1,7 @@
 package com.github.adrninistrator.jacgserver.controller;
 
 import com.github.adrninistrator.jacgserver.model.entity.CallGraphExecutionRecord;
+import com.github.adrninistrator.jacgserver.model.entity.CallGraphFileInfo;
 import com.github.adrninistrator.jacgserver.model.entity.FindStackExecutionRecord;
 import com.github.adrninistrator.jacgserver.model.vo.ResponseResult;
 import com.github.adrninistrator.jacgserver.service.TemplateExecutionRecordService;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -31,12 +33,6 @@ public class TemplateExecutionRecordController {
 
     /**
      * 查询调用链执行记录列表（分页）
-     *
-     * @param templateId   模板ID
-     * @param minStartTime 最小开始时间（可选）
-     * @param page         页码
-     * @param pageSize     每页数量
-     * @return 执行记录列表
      */
     @GetMapping("/call-graph/records/{templateId}")
     public ResponseResult queryCallGraphRecords(
@@ -61,13 +57,17 @@ public class TemplateExecutionRecordController {
     }
 
     /**
+     * 查询调用链文件信息
+     * 根据调用链执行记录ID查询生成的调用链文件路径信息
+     */
+    @GetMapping("/call-graph/files/{id}")
+    public ResponseResult getCallGraphFiles(@PathVariable Long id) {
+        List<CallGraphFileInfo> fileInfoList = templateExecutionRecordService.getCallGraphFileInfoByRecordId(id);
+        return ResponseUtil.success(fileInfoList);
+    }
+
+    /**
      * 查询关键字生成堆栈执行记录列表（分页）
-     *
-     * @param templateId   模板ID
-     * @param minStartTime 最小开始时间（可选）
-     * @param page         页码
-     * @param pageSize     每页数量
-     * @return 执行记录列表
      */
     @GetMapping("/find-stack/records/{templateId}")
     public ResponseResult queryFindStackRecords(

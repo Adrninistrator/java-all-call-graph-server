@@ -6,6 +6,7 @@ import com.adrninistrator.jacg.conf.enums.ConfigKeyEnum;
 import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseListEnum;
 import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseSetEnum;
 import com.adrninistrator.jacg.el.enums.ElConfigEnum;
+import com.adrninistrator.javacg2.common.enums.JavaCG2DirEnum;
 import com.adrninistrator.javacg2.conf.JavaCG2ConfigureWrapper;
 import com.adrninistrator.javacg2.conf.enums.JavaCG2ConfigKeyEnum;
 import com.adrninistrator.javacg2.conf.enums.JavaCG2OtherConfigFileUseListEnum;
@@ -60,6 +61,17 @@ public class ConfigReaderUtil {
      * 实际读取JavaCG2配置的方法
      */
     private static JavaCG2ConfigDTO doReadJavaCG2Config(String projectDir) {
+        // 检查配置目录是否存在
+        if (!new File(projectDir).exists()) {
+            return new JavaCG2ConfigDTO();
+        }
+
+        // 检查JavaCG2配置子目录是否存在（避免ConfigureWrapper读取不存在的配置文件时抛出异常）
+        File javacg2ConfigDir = new File(projectDir, JavaCG2DirEnum.IDE_CONFIG.getDirName());
+        if (!javacg2ConfigDir.exists() || !javacg2ConfigDir.isDirectory()) {
+            return new JavaCG2ConfigDTO();
+        }
+
         JavaCG2ConfigureWrapper wrapper = new JavaCG2ConfigureWrapper(false, projectDir);
         JavaCG2ConfigDTO dto = new JavaCG2ConfigDTO();
 
@@ -93,9 +105,12 @@ public class ConfigReaderUtil {
         }
         dto.setSetConfig(setConfig);
 
-        // 读取EL配置
+        // 读取EL配置（跳过ECE_EXAMPLE）
         Map<String, Object> elConfig = new HashMap<>();
         for (JavaCG2ElConfigEnum configEnum : JavaCG2ElConfigEnum.values()) {
+            if (configEnum == JavaCG2ElConfigEnum.ECE_EXAMPLE) {
+                continue;
+            }
             String value = wrapper.getElConfigText(configEnum);
             if (value != null && !value.isEmpty()) {
                 elConfig.put(configEnum.name(), value);
@@ -128,6 +143,12 @@ public class ConfigReaderUtil {
     private static JACGConfigDTO doReadJACGConfig(String configDir) {
         // 检查配置目录是否存在
         if (!new File(configDir).exists()) {
+            return new JACGConfigDTO();
+        }
+
+        // 检查JACG配置子目录是否存在（项目可能只有JavaCG2配置，避免ConfigureWrapper读取不存在的配置文件时抛出异常）
+        File jacgConfigDir = new File(configDir, "_jacg_config");
+        if (!jacgConfigDir.exists() || !jacgConfigDir.isDirectory()) {
             return new JACGConfigDTO();
         }
 
@@ -174,9 +195,12 @@ public class ConfigReaderUtil {
         }
         dto.setSetConfig(setConfig);
 
-        // 读取EL配置
+        // 读取EL配置（跳过ECE_EXAMPLE）
         Map<String, Object> elConfig = new HashMap<>();
         for (ElConfigEnum configEnum : ElConfigEnum.values()) {
+            if (configEnum == ElConfigEnum.ECE_EXAMPLE) {
+                continue;
+            }
             String value = wrapper.getElConfigText(configEnum);
             if (value != null && !value.isEmpty()) {
                 elConfig.put(configEnum.name(), value);
@@ -197,10 +221,19 @@ public class ConfigReaderUtil {
         // 设置默认MDC变量，确保库日志能正确输出
         MDCUtil.setDefaultMDC();
         try {
+            // 检查JavaCG2配置子目录是否存在
+            File javacg2ConfigDir = new File(projectDir, "_javacg2_config");
+            if (!javacg2ConfigDir.exists() || !javacg2ConfigDir.isDirectory()) {
+                return new HashMap<>();
+            }
+
             JavaCG2ConfigureWrapper wrapper = new JavaCG2ConfigureWrapper(false, projectDir);
             Map<String, String> elConfig = new HashMap<>();
 
             for (JavaCG2ElConfigEnum configEnum : JavaCG2ElConfigEnum.values()) {
+                if (configEnum == JavaCG2ElConfigEnum.ECE_EXAMPLE) {
+                    continue;
+                }
                 String value = wrapper.getElConfigText(configEnum);
                 if (value != null && !value.isEmpty()) {
                     elConfig.put(configEnum.name(), value);
@@ -226,10 +259,19 @@ public class ConfigReaderUtil {
                 return new HashMap<>();
             }
 
+            // 检查JACG配置子目录是否存在
+            File jacgConfigDir = new File(configDir, "_jacg_config");
+            if (!jacgConfigDir.exists() || !jacgConfigDir.isDirectory()) {
+                return new HashMap<>();
+            }
+
             ConfigureWrapper wrapper = new ConfigureWrapper(false, configDir);
             Map<String, String> elConfig = new HashMap<>();
 
             for (ElConfigEnum configEnum : ElConfigEnum.values()) {
+                if (configEnum == ElConfigEnum.ECE_EXAMPLE) {
+                    continue;
+                }
                 String value = wrapper.getElConfigText(configEnum);
                 if (value != null && !value.isEmpty()) {
                     elConfig.put(configEnum.name(), value);

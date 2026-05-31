@@ -23,8 +23,8 @@ public interface CallGraphExecutionRecordMapper {
      * 插入记录
      */
     @Insert("INSERT INTO call_graph_execution_record (exec_id, project_id, template_id, direction, entry_methods, " +
-            "start_time, status, output_dir) VALUES (#{execId}, #{projectId}, #{templateId}, #{direction}, " +
-            "#{entryMethods}, #{startTime}, #{status}, #{outputDir})")
+            "start_time, status, log_file_path, output_dir) VALUES (#{execId}, #{projectId}, #{templateId}, #{direction}, " +
+            "#{entryMethods}, #{startTime}, #{status}, #{logFilePath}, #{outputDir})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(CallGraphExecutionRecord record);
 
@@ -32,9 +32,12 @@ public interface CallGraphExecutionRecordMapper {
      * 更新状态
      */
     @Update("UPDATE call_graph_execution_record SET status = #{status}, end_time = #{endTime}, " +
-            "duration = #{duration}, output_dir = #{outputDir}, error_message = #{errorMessage} WHERE id = #{id}")
+            "duration = #{duration}, output_dir = #{outputDir}, log_file_path = #{logFilePath}, " +
+            "error_message = #{errorMessage} WHERE id = #{id}")
     int updateStatus(@Param("id") Long id, @Param("status") String status, @Param("endTime") java.util.Date endTime,
-                     @Param("duration") Long duration, @Param("outputDir") String outputDir, @Param("errorMessage") String errorMessage);
+                     @Param("duration") Long duration, @Param("outputDir") String outputDir,
+                     @Param("logFilePath") String logFilePath,
+                     @Param("errorMessage") String errorMessage);
 
     /**
      * 根据模板ID查询记录列表
@@ -67,4 +70,10 @@ public interface CallGraphExecutionRecordMapper {
      */
     @Select("SELECT * FROM call_graph_execution_record WHERE id = #{id}")
     CallGraphExecutionRecord findById(@Param("id") Long id);
+
+    /**
+     * 根据执行ID查询
+     */
+    @Select("SELECT * FROM call_graph_execution_record WHERE exec_id = #{execId}")
+    CallGraphExecutionRecord findByExecId(@Param("execId") String execId);
 }

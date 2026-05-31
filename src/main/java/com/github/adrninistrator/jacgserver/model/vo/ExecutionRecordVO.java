@@ -91,6 +91,7 @@ public class ExecutionRecordVO {
         private String status;
         private Long duration;
         private String errorMessage;
+        private String logFilePath;
 
         public Long getId() {
             return id;
@@ -170,6 +171,14 @@ public class ExecutionRecordVO {
 
         public void setErrorMessage(String errorMessage) {
             this.errorMessage = errorMessage;
+        }
+
+        public String getLogFilePath() {
+            return logFilePath;
+        }
+
+        public void setLogFilePath(String logFilePath) {
+            this.logFilePath = logFilePath;
         }
     }
 }

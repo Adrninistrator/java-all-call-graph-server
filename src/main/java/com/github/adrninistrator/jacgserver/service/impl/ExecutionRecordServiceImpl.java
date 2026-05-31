@@ -47,9 +47,9 @@ public class ExecutionRecordServiceImpl implements ExecutionRecordService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateStatus(Long id, String status, Long duration, String errorMessage) {
+    public void updateStatus(Long id, String status, Long duration, String errorMessage, String logFilePath) {
         try {
-            analysisExecutionRecordMapper.updateStatus(id, status, new Date(), duration, errorMessage);
+            analysisExecutionRecordMapper.updateStatus(id, status, new Date(), duration, errorMessage, logFilePath);
         } catch (Exception e) {
             logger.error("更新执行状态失败", e);
             throw new RuntimeException("更新执行状态失败: " + e.getMessage(), e);
@@ -159,6 +159,7 @@ public class ExecutionRecordServiceImpl implements ExecutionRecordService {
         item.setStatus(record.getStatus());
         item.setDuration(record.getDuration());
         item.setErrorMessage(record.getErrorMessage());
+        item.setLogFilePath(record.getLogFilePath());
         return item;
     }
 }

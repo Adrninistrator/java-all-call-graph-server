@@ -26,6 +26,11 @@ public class ProjectVO implements Serializable {
     private String description;
 
     /**
+     * 项目根目录（被解析的代码对应项目的根目录）
+     */
+    private String projectRootDir;
+
+    /**
      * 创建时间
      */
     private String createTime;
@@ -36,12 +41,17 @@ public class ProjectVO implements Serializable {
     private String updateTime;
 
     /**
-     * JavaCG2配置
+     * 是否通过MCP创建
      */
-    private JavaCG2ConfigDTO javaCG2Config;
+    private boolean createdByMcp;
 
     /**
-     * JACG配置
+     * javacg2配置
+     */
+    private JavaCG2ConfigDTO javacg2Config;
+
+    /**
+     * jacg配置
      */
     private JACGConfigDTO jacgConfig;
 
@@ -77,12 +87,12 @@ public class ProjectVO implements Serializable {
         this.updateTime = updateTime;
     }
 
-    public JavaCG2ConfigDTO getJavaCG2Config() {
-        return javaCG2Config;
+    public JavaCG2ConfigDTO getJavacg2Config() {
+        return javacg2Config;
     }
 
-    public void setJavaCG2Config(JavaCG2ConfigDTO javaCG2Config) {
-        this.javaCG2Config = javaCG2Config;
+    public void setJavacg2Config(JavaCG2ConfigDTO javacg2Config) {
+        this.javacg2Config = javacg2Config;
     }
 
     public JACGConfigDTO getJacgConfig() {
@@ -91,5 +101,21 @@ public class ProjectVO implements Serializable {
 
     public void setJacgConfig(JACGConfigDTO jacgConfig) {
         this.jacgConfig = jacgConfig;
+    }
+
+    public String getProjectRootDir() {
+        return projectRootDir;
+    }
+
+    public void setProjectRootDir(String projectRootDir) {
+        this.projectRootDir = projectRootDir;
+    }
+
+    public boolean isCreatedByMcp() {
+        return createdByMcp;
+    }
+
+    public void setCreatedByMcp(boolean createdByMcp) {
+        this.createdByMcp = createdByMcp;
     }
 }

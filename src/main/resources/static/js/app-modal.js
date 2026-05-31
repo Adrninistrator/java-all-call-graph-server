@@ -68,14 +68,14 @@ async function applyConfigModal() {
     const jarPaths = jarPathsText.split('\n').map(p => p.trim()).filter(p => p);
 
     // 收集配置数据（如果已打开配置编辑器）
-    const javaCG2Config = collectJavaCG2Config();
-    const jacgConfig = collectJACGConfig();
+    const javacg2Config = collectJavacg2Config();
+    const jacgConfig = collectJacgConfig();
 
     // 合并Jar路径配置
     const finalListConfig = Object.assign(
         {},
-        javaCG2Config ? javaCG2Config.listConfig : (currentProject.javaCG2Config ? currentProject.javaCG2Config.listConfig : {}),
-        { 'OCFULE_JAR_DIR': jarPaths }
+        javacg2Config ? javacg2Config.listConfig : (currentProject.javacg2Config ? currentProject.javacg2Config.listConfig : {}),
+        { [Javacg2Enum.OCFULE_JAR_DIR]: jarPaths }
     );
 
     try {
@@ -84,11 +84,11 @@ async function applyConfigModal() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 description: description,
-                javaCG2Config: {
-                    mainConfig: javaCG2Config ? javaCG2Config.mainConfig : (currentProject.javaCG2Config ? currentProject.javaCG2Config.mainConfig : {}),
+                javacg2Config: {
+                    mainConfig: javacg2Config ? javacg2Config.mainConfig : (currentProject.javacg2Config ? currentProject.javacg2Config.mainConfig : {}),
                     listConfig: finalListConfig,
-                    setConfig: javaCG2Config ? javaCG2Config.setConfig : (currentProject.javaCG2Config ? currentProject.javaCG2Config.setConfig : {}),
-                    elConfig: javaCG2Config ? javaCG2Config.elConfig : (currentProject.javaCG2Config ? currentProject.javaCG2Config.elConfig : {})
+                    setConfig: javacg2Config ? javacg2Config.setConfig : (currentProject.javacg2Config ? currentProject.javacg2Config.setConfig : {}),
+                    elConfig: javacg2Config ? javacg2Config.elConfig : (currentProject.javacg2Config ? currentProject.javacg2Config.elConfig : {})
                 },
                 jacgConfig: jacgConfig || currentProject.jacgConfig || {}
             })
@@ -384,6 +384,7 @@ async function showExecutionRecordDetail(id) {
                     <tr><th>执行耗时</th><td>${durationText}</td></tr>
                     <tr><th>执行状态</th><td><span class="exec-status status-${record.status}">${getStatusText(record.status)}</span></td></tr>
                     <tr><th>错误信息</th><td>${record.errorMessage ? escapeHtml(record.errorMessage) : '-'}</td></tr>
+                    <tr><th>日志文件路径</th><td>${record.logFilePath ? escapeHtml(record.logFilePath) : '-'}</td></tr>
                     <tr><th>创建时间</th><td>${formatDateTime(record.createTime)}</td></tr>
                     <tr><th>更新时间</th><td>${record.updateTime ? formatDateTime(record.updateTime) : '-'}</td></tr>
                 </table>
@@ -688,6 +689,8 @@ async function showTemplateExecutionRecordDetail(id, type) {
                     <tr><th>执行状态</th><td><span class="exec-status status-${record.status}">${getStatusText(record.status)}</span></td></tr>
                     <tr><th>错误信息</th><td>${record.errorMessage ? escapeHtml(record.errorMessage) : '-'}</td></tr>
                     <tr><th>输出目录路径</th><td>${record.outputDir ? escapeHtml(record.outputDir) : '-'}</td></tr>
+                    <tr><th>日志文件路径</th><td>${record.logFilePath ? escapeHtml(record.logFilePath) : '-'}</td></tr>
+                    ${record.callGraphFiles ? `<tr><th>调用链文件</th><td><button class="btn btn-sm btn-info" onclick="showCallGraphFilesModal(${record.id})">查看调用链文件</button></td></tr>` : ''}
                 </table>
             `;
             document.getElementById('templateRecordDetailBody').innerHTML = detailHtml;
@@ -753,3 +756,79 @@ document.addEventListener('click', function(e) {
         }
     }
 });
+
+/**
+ * 显示调用链文件路径Map的模态框
+ * @param {number} recordId - 调用链执行记录ID
+ */
+async function showCallGraphFilesModal(recordId) {
+    let modalHtml = `
+        <div class="modal" id="callGraphFilesModal" onclick="closeCallGraphFilesModal(event)">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>调用链文件路径</h3>
+                    <button class="modal-close" onclick="closeCallGraphFilesModal()">&times;</button>
+                </div>
+                <div id="callGraphFilesBody" class="modal-body">
+                    <div class="text-center">加载中...</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="closeCallGraphFilesModal()">关闭</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const existingModal = document.getElementById('callGraphFilesModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    try {
+        const response = await fetch(`${API_BASE}/template/execution/call-graph/files/${recordId}`);
+        const result = await response.json();
+
+        if (result.code === 200) {
+            const fileInfoList = result.data;
+            if (!fileInfoList || fileInfoList.length === 0) {
+                document.getElementById('callGraphFilesBody').innerHTML = '<div class="text-muted">无调用链文件信息</div>';
+                return;
+            }
+
+            let html = '<table class="record-table">';
+            html += '<thead><tr><th>入口方法</th><th>原始文本</th><th>文件路径</th></tr></thead>';
+            html += '<tbody>';
+
+            for (const fileInfo of fileInfoList) {
+                html += '<tr>';
+                html += `<td>${escapeHtml(fileInfo.entryMethod || '-')}</td>`;
+                html += `<td>${escapeHtml(fileInfo.origText || '-')}</td>`;
+                html += `<td style="word-break: break-all;">${escapeHtml(fileInfo.filePath || '-')}</td>`;
+                html += '</tr>';
+            }
+            
+            html += '</tbody></table>';
+            document.getElementById('callGraphFilesBody').innerHTML = html;
+        } else {
+            document.getElementById('callGraphFilesBody').innerHTML = `<div class="text-muted">加载失败: ${result.message}</div>`;
+        }
+    } catch (error) {
+        console.error('获取调用链文件信息失败', error);
+        document.getElementById('callGraphFilesBody').innerHTML = '<div class="text-muted">加载失败</div>';
+    }
+}
+
+/**
+ * 关闭调用链文件模态框
+ */
+function closeCallGraphFilesModal(event) {
+    if (event && event.target !== event.currentTarget) {
+        return;
+    }
+    const modal = document.getElementById('callGraphFilesModal');
+    if (modal) {
+        modal.remove();
+    }
+}

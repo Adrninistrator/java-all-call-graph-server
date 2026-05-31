@@ -52,7 +52,7 @@ async function showElContextMenu(event, textarea, name) {
     if (parts.length < 2) return;
     
     const enumName = parts[1];
-    const type = name.includes('javaCG2') || name.includes('javacg2') ? 'javacg2' : 'jacg';
+    const type = name.includes('javacg2') ? 'javacg2' : 'jacg';
     
     // 使用HTML中预定义的菜单容器
     const menu = document.getElementById('elContextMenu');
@@ -282,6 +282,129 @@ function closeElExampleModal(event) {
 }
 
 /**
+ * 显示EL表达式通用说明
+ */
+async function showElUsage(type) {
+    // 显示加载中
+    const loadingHtml = `
+        <div class="modal" id="elUsageModal" onclick="closeElUsageModal(event)">
+            <div class="modal-content modal-content-large" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>EL表达式通用说明</h3>
+                    <button class="modal-close" onclick="closeElUsageModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="el-example-loading">加载中...</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="closeElUsageModal()">关闭</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 移除已存在的模态框
+    const existingModal = document.getElementById('elUsageModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 添加模态框到body
+    document.body.insertAdjacentHTML('beforeend', loadingHtml);
+    
+    try {
+        const response = await fetch(`${API_BASE}/config/el-usage/${type}`);
+        const result = await response.json();
+        
+        if (result.code === 200) {
+            // 渲染Markdown内容
+            const markdownHtml = renderMarkdown(result.data.content);
+            document.querySelector('#elUsageModal .modal-body').innerHTML = `<div class="el-example-content">${markdownHtml}</div>`;
+        } else {
+            document.querySelector('#elUsageModal .modal-body').innerHTML = `<div class="el-example-error">加载失败: ${result.message}</div>`;
+        }
+    } catch (error) {
+        console.error('加载EL表达式通用说明失败', error);
+        document.querySelector('#elUsageModal .modal-body').innerHTML = `<div class="el-example-error">加载失败: ${error.message}</div>`;
+    }
+}
+
+/**
+ * 关闭EL表达式通用说明模态框
+ */
+function closeElUsageModal(event) {
+    if (event && event.target !== event.currentTarget) {
+        return;
+    }
+    const modal = document.getElementById('elUsageModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * 显示EL表达式组件通用说明
+ */
+async function showElUsageComponent(type) {
+    const componentLabel = type === 'javacg2' ? 'JavaCG2' : 'JACG';
+    // 显示加载中
+    const loadingHtml = `
+        <div class="modal" id="elUsageComponentModal" onclick="closeElUsageComponentModal(event)">
+            <div class="modal-content modal-content-large" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>${componentLabel}表达式通用说明</h3>
+                    <button class="modal-close" onclick="closeElUsageComponentModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="el-example-loading">加载中...</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" onclick="closeElUsageComponentModal()">关闭</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 移除已存在的模态框
+    const existingModal = document.getElementById('elUsageComponentModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 添加模态框到body
+    document.body.insertAdjacentHTML('beforeend', loadingHtml);
+    
+    try {
+        const response = await fetch(`${API_BASE}/config/el-usage-component/${type}`);
+        const result = await response.json();
+        
+        if (result.code === 200) {
+            // 渲染Markdown内容
+            const markdownHtml = renderMarkdown(result.data.content);
+            document.querySelector('#elUsageComponentModal .modal-body').innerHTML = `<div class="el-example-content">${markdownHtml}</div>`;
+        } else {
+            document.querySelector('#elUsageComponentModal .modal-body').innerHTML = `<div class="el-example-error">加载失败: ${result.message}</div>`;
+        }
+    } catch (error) {
+        console.error('加载EL表达式组件通用说明失败', error);
+        document.querySelector('#elUsageComponentModal .modal-body').innerHTML = `<div class="el-example-error">加载失败: ${error.message}</div>`;
+    }
+}
+
+/**
+ * 关闭EL表达式组件通用说明模态框
+ */
+function closeElUsageComponentModal(event) {
+    if (event && event.target !== event.currentTarget) {
+        return;
+    }
+    const modal = document.getElementById('elUsageComponentModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
  * 简单的Markdown渲染（支持常用语法）
  */
 function renderMarkdown(markdown) {
@@ -305,6 +428,37 @@ function renderMarkdown(markdown) {
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
     
+    // 表格（必须在段落处理之前）
+    html = html.replace(/^(\|.+\|)\n(\|[-:| ]+\|)\n((?:\|.+\|\n?)*)/gm, function(match, headerRow, separatorRow, bodyRows) {
+        // 解析表头
+        const headers = headerRow.split('|').filter(cell => cell.trim() !== '');
+        // 解析对齐方式
+        const separators = separatorRow.split('|').filter(cell => cell.trim() !== '');
+        const aligns = separators.map(sep => {
+            const s = sep.trim();
+            if (s.startsWith(':') && s.endsWith(':')) return 'center';
+            if (s.endsWith(':')) return 'right';
+            return 'left';
+        });
+        // 解析表体行
+        const bodyLines = bodyRows.trim().split('\n').filter(line => line.trim() !== '');
+        let tableHtml = '<table class="md-table"><thead><tr>';
+        headers.forEach((h, i) => {
+            tableHtml += `<th style="text-align:${aligns[i] || 'left'}">${h.trim()}</th>`;
+        });
+        tableHtml += '</tr></thead><tbody>';
+        bodyLines.forEach(line => {
+            const cells = line.split('|').filter(cell => cell.trim() !== '');
+            tableHtml += '<tr>';
+            cells.forEach((c, i) => {
+                tableHtml += `<td style="text-align:${aligns[i] || 'left'}">${c.trim()}</td>`;
+            });
+            tableHtml += '</tr>';
+        });
+        tableHtml += '</tbody></table>';
+        return tableHtml;
+    });
+
     // 无序列表
     html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
     html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');

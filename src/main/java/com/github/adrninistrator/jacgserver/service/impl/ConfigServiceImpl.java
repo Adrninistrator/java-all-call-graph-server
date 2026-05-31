@@ -11,11 +11,13 @@ import com.adrninistrator.javacg2.conf.enums.JavaCG2OtherConfigFileUseListEnum;
 import com.adrninistrator.javacg2.conf.enums.JavaCG2OtherConfigFileUseSetEnum;
 import com.adrninistrator.javacg2.el.enums.interfaces.ElAllowedVariableInterface;
 import com.github.adrninistrator.jacgserver.config.ConfigVisibilityDefinition;
+import com.github.adrninistrator.jacgserver.constant.ComponentEnum;
 import com.github.adrninistrator.jacgserver.constant.Constants;
 import com.github.adrninistrator.jacgserver.enums.ConfigSceneEnum;
 import com.github.adrninistrator.jacgserver.model.vo.ConfigDefinitionVO;
 import com.github.adrninistrator.jacgserver.model.vo.ConfigItemVO;
 import com.github.adrninistrator.jacgserver.model.vo.DependsOnVO;
+import com.github.adrninistrator.jacgserver.model.vo.ElAllowedVariableVO;
 import com.github.adrninistrator.jacgserver.model.vo.ElMenuCategoryVO;
 import com.github.adrninistrator.jacgserver.model.vo.ElMenuItemVO;
 import com.github.adrninistrator.jacgserver.model.vo.EnumOptionVO;
@@ -46,6 +48,8 @@ public class ConfigServiceImpl implements ConfigService {
 
     private static final Logger logger = LoggerFactory.getLogger(ConfigServiceImpl.class);
 
+
+
     @Value("${jacgserver.output.root.path:./}")
     private String outputRootPath;
 
@@ -56,19 +60,24 @@ public class ConfigServiceImpl implements ConfigService {
 
     @Override
     public ConfigDefinitionVO getConfigDefinitions(ConfigSceneEnum scene) {
+        return getConfigDefinitions(scene, false);
+    }
+
+    @Override
+    public ConfigDefinitionVO getConfigDefinitions(ConfigSceneEnum scene, boolean ignoreVisibility) {
         ConfigDefinitionVO definitions = new ConfigDefinitionVO();
 
         // 根据场景决定是否处理JavaCG2配置
         if (scene == ConfigSceneEnum.PROJECT) {
             // 项目配置场景：处理JavaCG2配置
-            definitions.setJavaCG2(buildJavaCG2ConfigDefinitions());
+            definitions.setJavacg2(buildJavaCG2ConfigDefinitions());
         } else {
             // 模板配置场景：不处理JavaCG2配置
-            definitions.setJavaCG2(buildEmptyJavaCG2ConfigDefinitions());
+            definitions.setJavacg2(buildEmptyJavaCG2ConfigDefinitions());
         }
 
         // JACG配置（项目配置和模板配置都需要处理）
-        definitions.setJacg(buildJacgConfigDefinitions(scene));
+        definitions.setJacg(buildJacgConfigDefinitions(scene, ignoreVisibility));
 
         return definitions;
     }
@@ -96,19 +105,19 @@ public class ConfigServiceImpl implements ConfigService {
      * 构建空的JavaCG2配置定义（模板场景使用）
      */
     private JavaCG2ConfigDefinitionVO buildEmptyJavaCG2ConfigDefinitions() {
-        JavaCG2ConfigDefinitionVO javaCG2Defs = new JavaCG2ConfigDefinitionVO();
-        javaCG2Defs.setMainConfig(new ArrayList<>());
-        javaCG2Defs.setListConfig(new ArrayList<>());
-        javaCG2Defs.setSetConfig(new ArrayList<>());
-        javaCG2Defs.setElConfig(new ArrayList<>());
-        return javaCG2Defs;
+        JavaCG2ConfigDefinitionVO javacg2Defs = new JavaCG2ConfigDefinitionVO();
+        javacg2Defs.setMainConfig(new ArrayList<>());
+        javacg2Defs.setListConfig(new ArrayList<>());
+        javacg2Defs.setSetConfig(new ArrayList<>());
+        javacg2Defs.setElConfig(new ArrayList<>());
+        return javacg2Defs;
     }
 
     /**
-     * 构建JavaCG2配置定义
+     * 构建javacg2配置定义
      */
     private JavaCG2ConfigDefinitionVO buildJavaCG2ConfigDefinitions() {
-        JavaCG2ConfigDefinitionVO javaCG2Defs = new JavaCG2ConfigDefinitionVO();
+        JavaCG2ConfigDefinitionVO javacg2Defs = new JavaCG2ConfigDefinitionVO();
 
         // 主配置
         List<ConfigItemVO> mainConfig = new ArrayList<>();
@@ -135,7 +144,7 @@ public class ConfigServiceImpl implements ConfigService {
 
             mainConfig.add(config);
         }
-        javaCG2Defs.setMainConfig(mainConfig);
+        javacg2Defs.setMainConfig(mainConfig);
 
         // List配置
         List<OtherConfigItemVO> listConfig = new ArrayList<>();
@@ -149,7 +158,7 @@ public class ConfigServiceImpl implements ConfigService {
             config.setVisible(ConfigVisibilityDefinition.isJavaCG2ListConfigVisible(configEnum));
             listConfig.add(config);
         }
-        javaCG2Defs.setListConfig(listConfig);
+        javacg2Defs.setListConfig(listConfig);
 
         // Set配置
         List<OtherConfigItemVO> setConfig = new ArrayList<>();
@@ -162,7 +171,7 @@ public class ConfigServiceImpl implements ConfigService {
             config.setDescription(Arrays.asList(configEnum.getDescriptions()));
             setConfig.add(config);
         }
-        javaCG2Defs.setSetConfig(setConfig);
+        javacg2Defs.setSetConfig(setConfig);
 
         // EL表达式配置
         List<OtherConfigItemVO> elConfig = new ArrayList<>();
@@ -177,11 +186,13 @@ public class ConfigServiceImpl implements ConfigService {
             config.setName(configEnum.getKey());
             config.setFileName(configEnum.getKey());
             config.setDescription(Arrays.asList(configEnum.getDescriptions()));
+            // 设置EL表达式允许使用的变量
+            config.setElAllowedVariables(buildElAllowedVariables(configEnum.getElAllowedVariableEnums()));
             elConfig.add(config);
         }
-        javaCG2Defs.setElConfig(elConfig);
+        javacg2Defs.setElConfig(elConfig);
 
-        return javaCG2Defs;
+        return javacg2Defs;
     }
 
     /**
@@ -217,14 +228,14 @@ public class ConfigServiceImpl implements ConfigService {
     /**
      * 构建JACG配置定义
      */
-    private JACGConfigDefinitionVO buildJacgConfigDefinitions(ConfigSceneEnum scene) {
+    private JACGConfigDefinitionVO buildJacgConfigDefinitions(ConfigSceneEnum scene, boolean ignoreVisibility) {
         JACGConfigDefinitionVO jacgDefs = new JACGConfigDefinitionVO();
 
         // 主配置
         List<ConfigItemVO> mainConfig = new ArrayList<>();
         for (ConfigKeyEnum configKey : ConfigKeyEnum.values()) {
-            // 模板场景下，跳过不展示的配置项
-            if (scene == ConfigSceneEnum.TEMPLATE && !ConfigVisibilityDefinition.isTemplateJacgMainConfigVisible(configKey)) {
+            // 模板场景下，跳过不展示的配置项（忽略可见性时不跳过）
+            if (!ignoreVisibility && scene == ConfigSceneEnum.TEMPLATE && !ConfigVisibilityDefinition.isTemplateJacgMainConfigVisible(configKey)) {
                 continue;
             }
 
@@ -269,8 +280,8 @@ public class ConfigServiceImpl implements ConfigService {
         // 数据库配置（项目配置和模板配置都需要处理）
         List<ConfigItemVO> dbConfig = new ArrayList<>();
         for (ConfigDbKeyEnum configKey : ConfigDbKeyEnum.values()) {
-            // 模板场景下，检查数据库配置是否需要展示
-            if (scene == ConfigSceneEnum.TEMPLATE && !ConfigVisibilityDefinition.isTemplateJacgDbConfigVisible(configKey)) {
+            // 模板场景下，检查数据库配置是否需要展示（忽略可见性时不跳过）
+            if (!ignoreVisibility && scene == ConfigSceneEnum.TEMPLATE && !ConfigVisibilityDefinition.isTemplateJacgDbConfigVisible(configKey)) {
                 continue;
             }
 
@@ -298,8 +309,8 @@ public class ConfigServiceImpl implements ConfigService {
         // List配置
         List<OtherConfigItemVO> listConfig = new ArrayList<>();
         for (OtherConfigFileUseListEnum configEnum : OtherConfigFileUseListEnum.values()) {
-            // 模板场景下，跳过不展示的配置项
-            if (scene == ConfigSceneEnum.TEMPLATE && !ConfigVisibilityDefinition.isTemplateJacgListConfigVisible(configEnum)) {
+            // 模板场景下，跳过不展示的配置项（忽略可见性时不跳过）
+            if (!ignoreVisibility && scene == ConfigSceneEnum.TEMPLATE && !ConfigVisibilityDefinition.isTemplateJacgListConfigVisible(configEnum)) {
                 continue;
             }
 
@@ -325,6 +336,12 @@ public class ConfigServiceImpl implements ConfigService {
             config.setFileName(configEnum.getKey());
             config.setDescription(Arrays.asList(configEnum.getDescriptions()));
             config.setVisible(ConfigVisibilityDefinition.isJacgSetConfigVisible(configEnum));
+            // 模板场景下，入口类/方法配置在默认模板中不可编辑
+            if (scene == ConfigSceneEnum.TEMPLATE
+                    && (configEnum == OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLEE
+                    || configEnum == OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLER)) {
+                config.setEditable(false);
+            }
             setConfig.add(config);
         }
         jacgDefs.setSetConfig(setConfig);
@@ -342,11 +359,41 @@ public class ConfigServiceImpl implements ConfigService {
             config.setName(configEnum.getKey());
             config.setFileName(configEnum.getKey());
             config.setDescription(Arrays.asList(configEnum.getDescriptions()));
+            // 设置EL表达式允许使用的变量
+            config.setElAllowedVariables(buildElAllowedVariables(configEnum.getElAllowedVariableEnums()));
             elConfig.add(config);
         }
         jacgDefs.setElConfig(elConfig);
 
         return jacgDefs;
+    }
+
+    /**
+     * 构建EL表达式允许使用的变量列表
+     *
+     * @param allowedVariables 允许使用的变量枚举数组
+     * @return 变量VO列表
+     */
+    private List<ElAllowedVariableVO> buildElAllowedVariables(ElAllowedVariableInterface[] allowedVariables) {
+        if (allowedVariables == null || allowedVariables.length == 0) {
+            return null;
+        }
+        List<ElAllowedVariableVO> result = new ArrayList<>();
+        for (ElAllowedVariableInterface variable : allowedVariables) {
+            ElAllowedVariableVO vo = new ElAllowedVariableVO();
+            vo.setEnumConstantName(variable.getEnumConstantName());
+            vo.setVariableName(variable.getVariableName());
+            vo.setType(variable.getType());
+            vo.setPrefixWithNum(variable.isPrefixWithNum());
+            if (variable.getDescriptions() != null) {
+                vo.setDescriptions(Arrays.asList(variable.getDescriptions()));
+            }
+            if (variable.getValueExamples() != null) {
+                vo.setValueExamples(Arrays.asList(variable.getValueExamples()));
+            }
+            result.add(vo);
+        }
+        return result;
     }
 
     /**
@@ -515,6 +562,41 @@ public class ConfigServiceImpl implements ConfigService {
             }
         } catch (Exception e) {
             logger.error("读取资源文件失败: {}", path, e);
+            return null;
+        }
+    }
+
+    /**
+     * 从指定jar包中读取资源文件内容
+     * 当classpath中多个jar包含同路径资源时，通过jar文件名关键字区分
+     *
+     * @param path           资源文件路径
+     * @param jarNameKeyword jar文件名关键字，用于匹配目标jar包
+     * @return 资源文件内容，未找到返回null
+     */
+    private String readResourceFileFromJar(String path, String jarNameKeyword) {
+        try {
+            java.util.Enumeration<java.net.URL> resources = getClass().getClassLoader().getResources(path);
+            while (resources.hasMoreElements()) {
+                java.net.URL url = resources.nextElement();
+                String urlStr = url.toString();
+                // 通过jar文件名关键字匹配目标jar包
+                if (urlStr.contains(jarNameKeyword)) {
+                    try (java.io.InputStream is = url.openStream();
+                         java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"))) {
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            sb.append(line).append("\n");
+                        }
+                        return sb.toString();
+                    }
+                }
+            }
+            logger.warn("未在包含关键字[{}]的jar包中找到资源文件: {}", jarNameKeyword, path);
+            return null;
+        } catch (Exception e) {
+            logger.error("从jar包读取资源文件失败: {}, jar关键字: {}", path, jarNameKeyword, e);
             return null;
         }
     }
@@ -757,5 +839,45 @@ public class ConfigServiceImpl implements ConfigService {
         result.put("fileName", listEnum.getKey());
         result.put("descriptions", Arrays.asList(listEnum.getDescriptions()));
         return result;
+    }
+
+    @Override
+    public String getElUsageContent(String type) {
+        if (type == null) {
+            return null;
+        }
+
+        ComponentEnum component = ComponentEnum.fromShortName(type);
+        if (component == null) {
+            logger.warn("不支持的EL配置类型: {}", type);
+            return null;
+        }
+
+        String usagePath = "_el_example/el_usage.md";
+        String jarNameKeyword = component.getFullName();
+
+        // 由于classpath中两个jar包都包含同名资源文件 _el_example/el_usage.md，任意使用一个就可以
+        // 不缓存文件内容
+        return readResourceFileFromJar(usagePath, jarNameKeyword);
+    }
+
+    @Override
+    public String getElUsageComponentContent(String type) {
+        if (type == null) {
+            return null;
+        }
+
+        ComponentEnum component = ComponentEnum.fromShortName(type);
+        if (component == null) {
+            logger.warn("不支持的EL配置类型: {}", type);
+            return null;
+        }
+
+        // 组件通用说明文件路径: _el_example/el_usage_javacg2.md 或 _el_example/el_usage_jacg.md
+        String usagePath = "_el_example/el_usage_" + component.getShortName() + ".md";
+        String jarNameKeyword = component.getFullName();
+
+        // 不缓存文件内容
+        return readResourceFileFromJar(usagePath, jarNameKeyword);
     }
 }

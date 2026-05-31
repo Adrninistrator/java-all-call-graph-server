@@ -29,6 +29,7 @@ public class DatabaseInitializer implements ApplicationRunner {
         logger.info("开始检查数据库表...");
         initAnalysisExecutionRecordTable();
         initCallGraphExecutionRecordTable();
+        initCallGraphFileInfoTable();
         initFindStackExecutionRecordTable();
         logger.info("数据库表检查完成");
     }
@@ -59,6 +60,7 @@ public class DatabaseInitializer implements ApplicationRunner {
         createIndexIfNotExists("idx_exec_id", "analysis_execution_record", "exec_id");
         createIndexIfNotExists("idx_project_id", "analysis_execution_record", "project_id");
         createIndexIfNotExists("idx_start_time", "analysis_execution_record", "start_time");
+        addColumnIfNotExists("analysis_execution_record", "log_file_path", "VARCHAR(500) COMMENT '日志文件路径'");
     }
 
     /**
@@ -87,6 +89,25 @@ public class DatabaseInitializer implements ApplicationRunner {
         createIndexIfNotExists("idx_cg_template_id", "call_graph_execution_record", "template_id");
         createIndexIfNotExists("idx_cg_project_id", "call_graph_execution_record", "project_id");
         createIndexIfNotExists("idx_cg_start_time", "call_graph_execution_record", "start_time");
+        addColumnIfNotExists("call_graph_execution_record", "log_file_path", "VARCHAR(500) COMMENT '日志文件路径'");
+    }
+
+    /**
+     * 初始化调用链文件信息表
+     * 存储模板执行生成的调用链文件路径信息，通过record_id关联call_graph_execution_record表
+     */
+    private void initCallGraphFileInfoTable() {
+        String createTableSql = "CREATE TABLE IF NOT EXISTS call_graph_file_info (" +
+                "id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID'," +
+                "record_id BIGINT NOT NULL COMMENT '关联的调用链执行记录ID'," +
+                "entry_method VARCHAR(500) NOT NULL COMMENT '入口方法'," +
+                "orig_text CLOB COMMENT '原始文本'," +
+                "file_path VARCHAR(1000) NOT NULL COMMENT '生成调用链文件的完整路径'" +
+                ")";
+        jdbcTemplate.execute(createTableSql);
+        logger.info("表 call_graph_file_info 检查/创建完成");
+
+        createIndexIfNotExists("idx_cfi_record_id", "call_graph_file_info", "record_id");
     }
 
     /**
@@ -134,6 +155,29 @@ public class DatabaseInitializer implements ApplicationRunner {
             String createIndexSql = String.format("CREATE INDEX %s ON %s(%s)", indexName, tableName, columnName);
             jdbcTemplate.execute(createIndexSql);
             logger.info("索引 {} 创建成功", indexName);
+        }
+    }
+
+    /**
+     * 为已有表添加列（如果不存在）
+     *
+     * @param tableName  表名称
+     * @param columnName 列名称
+     * @param columnType 列类型
+     */
+    private void addColumnIfNotExists(String tableName, String columnName, String columnType) {
+        try {
+            // 检查列是否存在
+            String checkColumnSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?";
+            Integer count = jdbcTemplate.queryForObject(checkColumnSql, Integer.class, tableName.toUpperCase(), columnName.toUpperCase());
+
+            if (count == null || count == 0) {
+                String alterSql = String.format("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, columnType);
+                jdbcTemplate.execute(alterSql);
+                logger.info("列 {}.{} 添加成功", tableName, columnName);
+            }
+        } catch (Exception e) {
+            logger.warn("检查/添加列 {}.{} 时出现异常: {}", tableName, columnName, e.getMessage());
         }
     }
 }

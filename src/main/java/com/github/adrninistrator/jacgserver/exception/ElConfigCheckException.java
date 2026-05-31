@@ -15,7 +15,7 @@ public class ElConfigCheckException extends BaseException {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 配置来源（java-callgraph2 或 java-all-call-graph）
+     * 配置来源（javacg2 或 jacg）
      */
     private final String configSource;
 
@@ -47,7 +47,7 @@ public class ElConfigCheckException extends BaseException {
     /**
      * 构造函数
      *
-     * @param configSource    配置来源（java-callgraph2 或 java-all-call-graph）
+     * @param configSource    配置来源（javacg2 或 jacg）
      * @param elConfigEnumName 检查不通过的表达式枚举名称
      * @param configFileName  配置文件名
      * @param configDescription 配置描述
@@ -85,7 +85,7 @@ public class ElConfigCheckException extends BaseException {
     /**
      * 获取配置来源
      *
-     * @return 配置来源（java-callgraph2 或 java-all-call-graph）
+     * @return 配置来源（javacg2 或 jacg）
      */
     public String getConfigSource() {
         return configSource;

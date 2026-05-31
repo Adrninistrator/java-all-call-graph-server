@@ -96,6 +96,39 @@ public class ConfigController {
     }
 
     /**
+     * 获取EL表达式通用说明文件内容
+     * 
+     * @param type 配置类型（javacg2/jacg）
+     */
+    @GetMapping("/el-usage/{type}")
+    public ResponseResult getElUsageContent(@PathVariable String type) {
+        String content = configService.getElUsageContent(type);
+        if (content == null) {
+            return ResponseUtil.error(404, "未找到EL表达式通用说明文件: " + type);
+        }
+        Map<String, String> result = new HashMap<>();
+        result.put("content", content);
+        return ResponseUtil.success(result);
+    }
+
+    /**
+     * 获取EL表达式组件通用说明文件内容
+     * 返回 _el_example/el_usage_javacg2.md 或 _el_example/el_usage_jacg.md 的内容
+     *
+     * @param type 配置类型（javacg2/jacg）
+     */
+    @GetMapping("/el-usage-component/{type}")
+    public ResponseResult getElUsageComponentContent(@PathVariable String type) {
+        String content = configService.getElUsageComponentContent(type);
+        if (content == null) {
+            return ResponseUtil.error(404, "未找到EL表达式组件通用说明文件: " + type);
+        }
+        Map<String, String> result = new HashMap<>();
+        result.put("content", content);
+        return ResponseUtil.success(result);
+    }
+
+    /**
      * 获取指定配置参数的描述信息
      * 
      * @param configType 配置类型（javacg2-list/javacg2-set/jacg-list/jacg-set）

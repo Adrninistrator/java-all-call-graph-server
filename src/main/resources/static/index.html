@@ -23,7 +23,10 @@
             <aside class="sidebar">
                 <div class="sidebar-header">
                     <h2>项目列表</h2>
-                    <button class="btn btn-primary" onclick="showCreateProjectModal()">新建项目</button>
+                    <div class="sidebar-header-actions">
+                        <button class="btn btn-primary btn-small" onclick="showCreateProjectModal()">新建项目</button>
+                        <button class="btn btn-secondary btn-small" onclick="showBatchManageModal()" title="批量管理">批量管理</button>
+                    </div>
                 </div>
                 <div id="projectList" class="project-list"></div>
             </aside>
@@ -51,6 +54,10 @@
                         <div class="info-row">
                             <span class="label">描述:</span>
                             <span id="detailDescription" class="value"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">项目根目录:</span>
+                            <span id="detailProjectRootDir" class="value"></span>
                         </div>
                         <div class="info-row">
                             <span class="label">创建时间:</span>
@@ -95,6 +102,14 @@
                             <span class="label">方向:</span>
                             <span id="detailDirection" class="value"></span>
                         </div>
+                        <div class="info-row" id="detailDefaultTemplateRow" style="display: none;">
+                            <span class="label">默认模板:</span>
+                            <span id="detailDefaultTemplate" class="value" style="color: #28a745;">是</span>
+                        </div>
+                        <div class="info-row" id="detailDefaultTemplateTipRow" style="display: none;">
+                            <span class="label"></span>
+                            <span class="value text-muted" style="font-size: 0.9em;">默认模板不支持通过页面执行，请使用MCP工具执行</span>
+                        </div>
                     </div>
                 </div>
 
@@ -118,15 +133,19 @@
                 <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div id="modalBody" class="modal-body">
-                <!-- 新建项目表单 -->
+                <!-- 创建项目表单 -->
                 <div id="createProjectForm" class="modal-form hidden">
                     <div class="form-group">
                         <label>描述</label>
-                        <input type="text" id="projectDescription" class="form-control" placeholder="请输入项目描述">
+                        <input type="text" id="createProjectDescription" class="form-control" placeholder="请输入项目描述">
                     </div>
                     <div class="form-group">
-                        <label>Jar/Class 文件路径 <button type="button" class="btn-desc-help" onclick="showConfigDescription('javacg2-list', 'OCFULE_JAR_DIR')" title="查看参数说明">?</button></label>
-                        <textarea id="jarPaths" class="form-control" placeholder="每行一个文件路径或目录"></textarea>
+                        <label>项目根目录 <span class="text-muted">(非必填，被解析的代码对应项目的根目录)</span></label>
+                        <input type="text" id="createProjectRootDir" class="form-control" placeholder="例如: D:\projects\my-project">
+                    </div>
+                    <div class="form-group">
+                        <label>Jar/Class 文件路径 <button type="button" class="btn-desc-help" onclick="showConfigDescription('javacg2-list', Javacg2Enum.OCFULE_JAR_DIR)" title="查看参数说明">?</button></label>
+                        <textarea id="createJarPaths" class="form-control" placeholder="每行一个文件路径或目录"></textarea>
                     </div>
                     <div class="form-tip">提示：创建项目后可在编辑页面配置更多参数</div>
                 </div>
@@ -137,7 +156,11 @@
                         <input type="text" id="editProjectDescription" class="form-control">
                     </div>
                     <div class="form-group">
-                        <label>Jar/Class 文件路径 <button type="button" class="btn-desc-help" onclick="showConfigDescription('javacg2-list', 'OCFULE_JAR_DIR')" title="查看参数说明">?</button></label>
+                        <label>项目根目录 <span class="text-muted">(非必填，被解析的代码对应项目的根目录)</span></label>
+                        <input type="text" id="editProjectRootDir" class="form-control" placeholder="例如: D:\projects\my-project">
+                    </div>
+                    <div class="form-group">
+                        <label>Jar/Class 文件路径 <button type="button" class="btn-desc-help" onclick="showConfigDescription('javacg2-list', Javacg2Enum.OCFULE_JAR_DIR)" title="查看参数说明">?</button></label>
                         <textarea id="editJarPaths" class="form-control" placeholder="每行一个文件路径或目录"></textarea>
                     </div>
                 </div>
@@ -180,10 +203,19 @@
                     </div>
                     <div class="form-group">
                         <label>调用链方向</label>
-                        <select id="templateDirection" class="form-control" onchange="updateEntryPointLabel()">
+                        <select id="templateDirection" class="form-control" onchange="updateEntryPointLabel(); onDefaultTemplateDirectionChange()">
                             <option value="caller">向下调用链</option>
                             <option value="callee">向上调用链</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <div class="toggle-switch-row">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="isDefaultTemplate" onchange="onDefaultTemplateToggle()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-label">默认模板 <span class="text-muted">(每个方向只能有一个默认模板，默认模板不支持通过页面执行)</span></span>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label id="entryPointLabel">入口类/方法（每行一个） <button type="button" class="btn-desc-help" onclick="showEntryPointDescription()" title="查看参数说明">?</button></label>
@@ -217,6 +249,12 @@
                             <option value="caller">向下调用链</option>
                             <option value="callee">向上调用链</option>
                         </select>
+                    </div>
+                    <div class="form-group" id="editDefaultTemplateInfoGroup" style="display: none;">
+                        <div class="config-tip-box">
+                            <span class="config-tip-icon">ℹ️</span>
+                            <span class="config-tip-text">默认模板的入口类/方法配置不允许修改（执行时由MCP工具指定）</span>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label id="editEntryPointLabel">入口类/方法（每行一个） <button type="button" class="btn-desc-help" onclick="showEntryPointDescription()" title="查看参数说明">?</button></label>
@@ -384,6 +422,7 @@
     </template>
 
     <!-- JS文件（按依赖顺序加载） -->
+    <script src="js/app-constants.js"></script>
     <script src="js/app-core.js"></script>
     <script src="js/app-el.js"></script>
     <script src="js/app-config.js"></script>
@@ -396,6 +435,32 @@
 
     <!-- EL表达式右键菜单容器 -->
     <div id="elContextMenu" class="el-context-menu" style="display: none;"></div>
+
+    <!-- 批量管理模态框 -->
+    <div id="batchManageModal" class="modal hidden">
+        <div class="modal-content modal-content-large">
+            <div class="modal-header">
+                <h3>批量管理项目</h3>
+                <div class="modal-header-actions">
+                    <button class="btn btn-danger btn-sm" onclick="batchDeleteSelectedProjects()" id="batchDeleteBtn" disabled>删除选中</button>
+                </div>
+                <button class="modal-close" onclick="closeBatchManageModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="batch-manage-toolbar">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="batchSelectAll" onchange="toggleBatchSelectAll()">
+                        <span>全选</span>
+                    </label>
+                    <span id="batchSelectedCount" class="text-muted">已选择 0 个项目</span>
+                </div>
+                <div id="batchProjectList" class="batch-project-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeBatchManageModal()">关闭</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 表达式配置检查错误弹窗 -->
     <div id="elConfigErrorModal" class="modal hidden">

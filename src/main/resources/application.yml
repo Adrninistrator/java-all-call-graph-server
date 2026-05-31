@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 34567
 
 spring:
   application:
@@ -17,8 +17,6 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
-    initialization-mode: always
-    schema: classpath:schema.sql
   h2:
     console:
       enabled: false
@@ -30,6 +28,16 @@ mybatis:
     map-underscore-to-camel-case: true
     default-fetch-size: 100
     default-statement-timeout: 30
+
+# Actuator配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,shutdown
+  endpoint:
+    shutdown:
+      enabled: true
 
 # 自定义配置
 jacgserver:

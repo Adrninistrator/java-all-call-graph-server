@@ -27,8 +27,9 @@ public interface ExecutionRecordService {
      * @param status       执行状态
      * @param duration     执行耗时（毫秒）
      * @param errorMessage 错误信息（可为null）
+     * @param logFilePath  日志文件路径（可为null）
      */
-    void updateStatus(Long id, String status, Long duration, String errorMessage);
+    void updateStatus(Long id, String status, Long duration, String errorMessage, String logFilePath);
 
     /**
      * 查询执行记录（分页）

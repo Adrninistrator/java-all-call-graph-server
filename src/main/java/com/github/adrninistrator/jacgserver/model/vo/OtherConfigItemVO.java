@@ -44,6 +44,18 @@ public class OtherConfigItemVO implements Serializable {
      */
     private Boolean visible;
 
+    /**
+     * 是否可编辑
+     * true-可编辑，false-不可编辑（默认模板的入口类/方法配置禁止编辑）
+     */
+    private Boolean editable = true;
+
+    /**
+     * EL表达式允许使用的变量列表
+     * 仅EL表达式配置项有此字段，用于说明当前表达式配置中可使用的变量及其用法
+     */
+    private List<ElAllowedVariableVO> elAllowedVariables;
+
     public String getKey() {
         return key;
     }
@@ -94,5 +106,21 @@ public class OtherConfigItemVO implements Serializable {
 
     public void setVisible(Boolean visible) {
         this.visible = visible;
+    }
+
+    public Boolean getEditable() {
+        return editable;
+    }
+
+    public void setEditable(Boolean editable) {
+        this.editable = editable;
+    }
+
+    public List<ElAllowedVariableVO> getElAllowedVariables() {
+        return elAllowedVariables;
+    }
+
+    public void setElAllowedVariables(List<ElAllowedVariableVO> elAllowedVariables) {
+        this.elAllowedVariables = elAllowedVariables;
     }
 }

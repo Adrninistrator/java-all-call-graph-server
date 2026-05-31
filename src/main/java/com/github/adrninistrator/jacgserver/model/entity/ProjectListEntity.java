@@ -45,6 +45,11 @@ public class ProjectListEntity implements Serializable {
         private String description;
 
         /**
+         * 项目根目录（被解析的代码对应项目的根目录）
+         */
+        private String projectRootDir;
+
+        /**
          * 创建时间
          */
         private String createTime;
@@ -53,6 +58,11 @@ public class ProjectListEntity implements Serializable {
          * 更新时间
          */
         private String updateTime;
+
+        /**
+         * 是否通过MCP创建
+         */
+        private boolean createdByMcp;
 
         public String getProjectId() {
             return projectId;
@@ -84,6 +94,22 @@ public class ProjectListEntity implements Serializable {
 
         public void setUpdateTime(String updateTime) {
             this.updateTime = updateTime;
+        }
+
+        public String getProjectRootDir() {
+            return projectRootDir;
+        }
+
+        public void setProjectRootDir(String projectRootDir) {
+            this.projectRootDir = projectRootDir;
+        }
+
+        public boolean isCreatedByMcp() {
+            return createdByMcp;
+        }
+
+        public void setCreatedByMcp(boolean createdByMcp) {
+            this.createdByMcp = createdByMcp;
         }
     }
 }

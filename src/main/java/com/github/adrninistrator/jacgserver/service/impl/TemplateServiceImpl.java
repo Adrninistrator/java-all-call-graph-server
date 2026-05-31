@@ -2,6 +2,8 @@ package com.github.adrninistrator.jacgserver.service.impl;
 
 import com.adrninistrator.jacg.conf.ConfigureWrapper;
 import com.adrninistrator.jacg.conf.enums.ConfigDbKeyEnum;
+import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseListEnum;
+import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseSetEnum;
 import com.github.adrninistrator.jacgserver.constant.Constants;
 import com.github.adrninistrator.jacgserver.exception.ConfigException;
 import com.github.adrninistrator.jacgserver.exception.ExecuteException;
@@ -82,6 +84,7 @@ public class TemplateServiceImpl implements TemplateService {
                     templateVO.setProjectId(infoEntity.getProjectId());
                     templateVO.setDescription(infoEntity.getDescription());
                     templateVO.setDirection(infoEntity.getDirection());
+                    templateVO.setDefaultTemplate(infoEntity.getDefaultTemplate() != null ? infoEntity.getDefaultTemplate() : false);
                     templateVO.setCreateTime(infoEntity.getCreateTime());
                     templateVO.setUpdateTime(infoEntity.getUpdateTime());
                     templateVOList.add(templateVO);
@@ -116,6 +119,7 @@ public class TemplateServiceImpl implements TemplateService {
         templateVO.setProjectId(infoEntity.getProjectId());
         templateVO.setDescription(infoEntity.getDescription());
         templateVO.setDirection(infoEntity.getDirection());
+        templateVO.setDefaultTemplate(infoEntity.getDefaultTemplate() != null ? infoEntity.getDefaultTemplate() : false);
         templateVO.setCreateTime(infoEntity.getCreateTime());
         templateVO.setUpdateTime(infoEntity.getUpdateTime());
 
@@ -158,25 +162,60 @@ public class TemplateServiceImpl implements TemplateService {
      * 实际创建模板的逻辑
      */
     private TemplateVO doCreateTemplate(String projectId, TemplateDTO templateDTO) {
-        // 检查模板名称是否为空
-        if (templateDTO.getDescription() == null || templateDTO.getDescription().trim().isEmpty()) {
-            throw new ConfigException("模板名称不能为空");
+        boolean isDefaultTemplate = Boolean.TRUE.equals(templateDTO.getDefaultTemplate());
+        String direction = templateDTO.getDirection();
+
+        // 默认模板使用固定的模板描述与ID
+        String templateDesc;
+        String templateId;
+        if (isDefaultTemplate) {
+            templateDesc = Constants.DIRECTION_CALLEE.equals(direction)
+                    ? Constants.DEFAULT_TEMPLATE_DESC_4EE
+                    : Constants.DEFAULT_TEMPLATE_DESC_4ER;
+            templateId = templateDesc;
+            // 覆盖description为固定描述
+            templateDTO.setDescription(templateDesc);
+        } else {
+            templateDesc = templateDTO.getDescription();
+            templateId = IdGenerator.generateId();
         }
 
-        // 检查模板名称是否重复（在同一项目内）
-        if (isTemplateNameExists(projectId, templateDTO.getDescription(), null)) {
-            throw new ConfigException("模板名称已存在: " + templateDTO.getDescription());
+        // 检查模板描述是否为空
+        if (templateDesc == null || templateDesc.trim().isEmpty()) {
+            throw new ConfigException("模板描述不能为空");
         }
 
-        // 检查入口类/方法是否为空
-        if (!hasEntryPoints(templateDTO.getJacgConfig(), templateDTO.getDirection())) {
-            throw new ConfigException("入口类/方法不能为空");
+        // 检查模板描述是否重复（在同一项目内）
+        if (isTemplateDescExists(projectId, templateDesc, null)) {
+            throw new ConfigException("模板描述已存在: " + templateDesc);
+        }
+
+        // 默认模板检查：每个项目每个方向只能有一个默认模板
+        if (isDefaultTemplate) {
+            if (isDefaultTemplateExists(projectId, direction)) {
+                throw new ConfigException("当前项目已存在" + (Constants.DIRECTION_CALLEE.equals(direction) ? "向上" : "向下") + "默认模板");
+            }
+        }
+
+        // 默认模板使用占位符作为入口类/方法，跳过非空校验
+        if (isDefaultTemplate) {
+            setDefaultTemplateEntryPlaceholder(templateDTO, direction);
+        } else {
+            // 非默认模板检查入口类/方法是否为空
+            if (!hasEntryPoints(templateDTO.getJacgConfig(), direction)) {
+                throw new ConfigException("入口类/方法不能为空");
+            }
         }
 
         // 检查关键字配置：如果启用了生成调用链根据关键字生成堆栈功能，关键字参数不能为空
-        validateFindStackKeywords(templateDTO.getJacgConfig(), templateDTO.getDirection());
+        validateFindStackKeywords(templateDTO.getJacgConfig(), direction);
 
-        String templateId = IdGenerator.generateId();
+        // 模板不允许指定数据库配置参数，模板使用项目的数据库配置
+        // 前端不应发送dbConfig参数，若发送则忽略，后端会自动使用项目的数据库配置覆盖
+        if (templateDTO.getJacgConfig() != null) {
+            templateDTO.getJacgConfig().setDbConfig(null);
+        }
+
         String currentTime = IdGenerator.getCurrentTime();
 
         // 创建模板目录
@@ -191,8 +230,9 @@ public class TemplateServiceImpl implements TemplateService {
         TemplateInfoEntity templateInfo = new TemplateInfoEntity();
         templateInfo.setTemplateId(templateId);
         templateInfo.setProjectId(projectId);
-        templateInfo.setDescription(templateDTO.getDescription());
-        templateInfo.setDirection(templateDTO.getDirection());
+        templateInfo.setDescription(templateDesc);
+        templateInfo.setDirection(direction);
+        templateInfo.setDefaultTemplate(isDefaultTemplate);
         templateInfo.setCreateTime(currentTime);
         templateInfo.setUpdateTime(currentTime);
 
@@ -219,13 +259,14 @@ public class TemplateServiceImpl implements TemplateService {
         TemplateVO templateVO = new TemplateVO();
         templateVO.setTemplateId(templateId);
         templateVO.setProjectId(projectId);
-        templateVO.setDescription(templateDTO.getDescription());
-        templateVO.setDirection(templateDTO.getDirection());
+        templateVO.setDescription(templateDesc);
+        templateVO.setDirection(direction);
+        templateVO.setDefaultTemplate(isDefaultTemplate);
         templateVO.setCreateTime(currentTime);
         templateVO.setUpdateTime(currentTime);
         templateVO.setJacgConfig(jacgConfig);
 
-        logger.info("创建模板成功: templateId={}, projectId={}", templateId, projectId);
+        logger.info("创建模板成功: templateId={}, projectId={}, defaultTemplate={}", templateId, projectId, isDefaultTemplate);
         return templateVO;
     }
 
@@ -252,19 +293,38 @@ public class TemplateServiceImpl implements TemplateService {
             throw new ExecuteException("项目正在执行静态分析，请稍后再试");
         }
 
-        // 检查模板名称是否为空
+        // 检查模板描述是否为空
         if (templateDTO.getDescription() == null || templateDTO.getDescription().trim().isEmpty()) {
-            throw new ConfigException("模板名称不能为空");
+            throw new ConfigException("模板描述不能为空");
         }
 
-        // 检查模板名称是否重复（在同一项目内，排除当前模板）
-        if (isTemplateNameExists(existingInfo.getProjectId(), templateDTO.getDescription(), templateId)) {
-            throw new ConfigException("模板名称已存在: " + templateDTO.getDescription());
+        // 默认模板不允许修改模板描述
+        boolean isExistingDefaultTemplate = Boolean.TRUE.equals(existingInfo.getDefaultTemplate());
+        if (isExistingDefaultTemplate) {
+            // 默认模板保持原有描述和方向，不允许修改
+            templateDTO.setDescription(existingInfo.getDescription());
+            templateDTO.setDirection(existingInfo.getDirection());
         }
 
-        // 检查入口类/方法是否为空
-        if (!hasEntryPoints(templateDTO.getJacgConfig(), templateDTO.getDirection())) {
+        // 检查模板描述是否重复（在同一项目内，排除当前模板）
+        if (isTemplateDescExists(existingInfo.getProjectId(), templateDTO.getDescription(), templateId)) {
+            throw new ConfigException("模板描述已存在: " + templateDTO.getDescription());
+        }
+
+        // 检查入口类/方法是否为空（默认模板不检查，使用占位符）
+        if (!isExistingDefaultTemplate && !hasEntryPoints(templateDTO.getJacgConfig(), templateDTO.getDirection())) {
             throw new ConfigException("入口类/方法不能为空");
+        }
+
+        // 默认模板不允许修改入口类/方法配置，检查并拒绝修改
+        if (isExistingDefaultTemplate && isDefaultTemplateEntryPointModified(templateDTO, existingInfo.getDirection())) {
+            throw new ConfigException("默认模板的入口类/方法配置不允许修改");
+        }
+
+        // 模板不允许修改数据库配置参数，模板使用项目的数据库配置
+        // 前端不应发送dbConfig参数，若发送则忽略，后端会自动使用项目的数据库配置覆盖
+        if (templateDTO.getJacgConfig() != null) {
+            templateDTO.getJacgConfig().setDbConfig(null);
         }
 
         // 检查关键字配置：如果启用了生成调用链根据关键字生成堆栈功能，关键字参数不能为空
@@ -272,7 +332,7 @@ public class TemplateServiceImpl implements TemplateService {
 
         String currentTime = IdGenerator.getCurrentTime();
 
-        // 更新基本信息
+        // 更新基本信息（默认模板保持原有名称和方向）
         existingInfo.setDescription(templateDTO.getDescription());
         existingInfo.setDirection(templateDTO.getDirection());
         existingInfo.setUpdateTime(currentTime);
@@ -383,6 +443,10 @@ public class TemplateServiceImpl implements TemplateService {
         templateDTO.setDescription(description != null ? description : sourceTemplate.getDescription() + "-副本");
         templateDTO.setDirection(sourceTemplate.getDirection());
         templateDTO.setJacgConfig(sourceTemplate.getJacgConfig());
+        // 复制模板时清除数据库配置，模板使用项目的数据库配置
+        templateDTO.getJacgConfig().setDbConfig(null);
+        // 复制模板时不复制默认模板标记
+        templateDTO.setDefaultTemplate(false);
 
         return createTemplate(sourceTemplate.getProjectId(), templateDTO);
     }
@@ -432,14 +496,14 @@ public class TemplateServiceImpl implements TemplateService {
     }
 
     /**
-     * 检查模板名称是否已存在（在同一项目内）
+     * 检查模板描述是否已存在（在同一项目内）
      *
      * @param projectId 项目ID
-     * @param description 模板名称
+     * @param description 模板描述
      * @param excludeTemplateId 排除的模板ID（更新时使用）
      * @return true-已存在，false-不存在
      */
-    private boolean isTemplateNameExists(String projectId, String description, String excludeTemplateId) {
+    private boolean isTemplateDescExists(String projectId, String description, String excludeTemplateId) {
         if (description == null || description.isEmpty()) {
             return false;
         }
@@ -483,7 +547,7 @@ public class TemplateServiceImpl implements TemplateService {
         if (jacgConfig == null || jacgConfig.getSetConfig() == null) {
             return false;
         }
-        String configKey = "caller".equals(direction) ? "OCFUSE_METHOD_CLASS_4CALLER" : "OCFUSE_METHOD_CLASS_4CALLEE";
+        String configKey = "caller".equals(direction) ? OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLER.name() : OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLEE.name();
         List<String> entryPoints = jacgConfig.getSetConfig().get(configKey);
         return entryPoints != null && !entryPoints.isEmpty();
     }
@@ -500,12 +564,139 @@ public class TemplateServiceImpl implements TemplateService {
         }
 
         // 根据调用链方向确定关键字配置的key
-        String keywordConfigKey = "caller".equals(direction) ? "OCFULE_FIND_STACK_KEYWORD_4ER" : "OCFULE_FIND_STACK_KEYWORD_4EE";
+        String keywordConfigKey = "caller".equals(direction) ? OtherConfigFileUseListEnum.OCFULE_FIND_STACK_KEYWORD_4ER.name() : OtherConfigFileUseListEnum.OCFULE_FIND_STACK_KEYWORD_4EE.name();
         List<String> keywords = jacgConfig.getListConfig().get(keywordConfigKey);
 
         // 如果配置了关键字，检查是否为空
         if (keywords != null && keywords.isEmpty()) {
             throw new ConfigException("启用生成调用链根据关键字生成堆栈功能时，关键字参数不能为空");
         }
+    }
+
+    /**
+     * 检查项目是否已存在指定方向的默认模板
+     *
+     * @param projectId 项目ID
+     * @param direction 调用链方向
+     * @return true-已存在，false-不存在
+     */
+    private boolean isDefaultTemplateExists(String projectId, String direction) {
+        String templatesDir = configService.getProjectConfDir() + File.separator + projectId + File.separator + Constants.TEMPLATES_DIR;
+        File templatesDirFile = new File(templatesDir);
+
+        if (!templatesDirFile.exists() || !templatesDirFile.isDirectory()) {
+            return false;
+        }
+
+        File[] templateDirs = templatesDirFile.listFiles(File::isDirectory);
+        if (templateDirs == null) {
+            return false;
+        }
+
+        for (File templateDir : templateDirs) {
+            File templateInfoFile = new File(templateDir, TEMPLATE_INFO_FILE);
+            if (templateInfoFile.exists()) {
+                TemplateInfoEntity infoEntity = JsonUtil.fromFile(templateInfoFile, TemplateInfoEntity.class);
+                if (infoEntity != null && Boolean.TRUE.equals(infoEntity.getDefaultTemplate())
+                        && direction.equals(infoEntity.getDirection())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断默认模板的入口类/方法配置是否被修改
+     * 默认模板的入口类/方法配置使用固定占位符 ${place_holder}，不允许修改为其他值
+     *
+     * @param templateDTO 模板DTO
+     * @param direction 调用链方向
+     * @return true-已修改（不允许），false-未修改（允许）
+     */
+    private boolean isDefaultTemplateEntryPointModified(TemplateDTO templateDTO, String direction) {
+        JACGConfigDTO jacgConfig = templateDTO.getJacgConfig();
+        if (jacgConfig == null || jacgConfig.getSetConfig() == null) {
+            return false;
+        }
+        String entryPointsKey = Constants.DIRECTION_CALLER.equals(direction)
+                ? OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLER.name() : OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLEE.name();
+        List<String> entryPoints = jacgConfig.getSetConfig().get(entryPointsKey);
+        if (entryPoints == null || entryPoints.isEmpty()) {
+            return false;
+        }
+        // 判断入口类/方法是否不是占位符
+        return entryPoints.size() != 1 || !Constants.DEFAULT_TEMPLATE_ENTRY_PLACEHOLDER.equals(entryPoints.get(0));
+    }
+
+    /**
+     * 为默认模板设置入口类/方法占位符
+     * 默认模板的入口类/方法使用固定占位符 ${place_holder}，执行时由MCP工具指定实际的入口类/方法替换
+     *
+     * @param templateDTO 模板DTO
+     * @param direction 调用链方向
+     */
+    private void setDefaultTemplateEntryPlaceholder(TemplateDTO templateDTO, String direction) {
+        JACGConfigDTO jacgConfig = templateDTO.getJacgConfig();
+        if (jacgConfig == null) {
+            jacgConfig = new JACGConfigDTO();
+            templateDTO.setJacgConfig(jacgConfig);
+        }
+        if (jacgConfig.getSetConfig() == null) {
+            jacgConfig.setSetConfig(new java.util.HashMap<>());
+        }
+        String entryPointsKey = Constants.DIRECTION_CALLER.equals(direction)
+                ? OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLER.name() : OtherConfigFileUseSetEnum.OCFUSE_METHOD_CLASS_4CALLEE.name();
+        List<String> placeholderList = new ArrayList<>();
+        placeholderList.add(Constants.DEFAULT_TEMPLATE_ENTRY_PLACEHOLDER);
+        jacgConfig.getSetConfig().put(entryPointsKey, placeholderList);
+    }
+
+    /**
+     * 查找项目指定方向的默认模板ID
+     *
+     * @param projectId 项目ID
+     * @param direction 调用链方向
+     * @return 默认模板ID，不存在则返回null
+     */
+    public String getDefaultTemplateId(String projectId, String direction) {
+        String templatesDir = configService.getProjectConfDir() + File.separator + projectId + File.separator + Constants.TEMPLATES_DIR;
+        File templatesDirFile = new File(templatesDir);
+
+        if (!templatesDirFile.exists() || !templatesDirFile.isDirectory()) {
+            return null;
+        }
+
+        File[] templateDirs = templatesDirFile.listFiles(File::isDirectory);
+        if (templateDirs == null) {
+            return null;
+        }
+
+        for (File templateDir : templateDirs) {
+            File templateInfoFile = new File(templateDir, TEMPLATE_INFO_FILE);
+            if (templateInfoFile.exists()) {
+                TemplateInfoEntity infoEntity = JsonUtil.fromFile(templateInfoFile, TemplateInfoEntity.class);
+                if (infoEntity != null && Boolean.TRUE.equals(infoEntity.getDefaultTemplate())
+                        && direction.equals(infoEntity.getDirection())) {
+                    return infoEntity.getTemplateId();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 查找项目指定方向的默认模板目录
+     *
+     * @param projectId 项目ID
+     * @param direction 调用链方向
+     * @return 默认模板目录路径，不存在则返回null
+     */
+    public String findDefaultTemplateDir(String projectId, String direction) {
+        String defaultTemplateId = getDefaultTemplateId(projectId, direction);
+        if (defaultTemplateId != null) {
+            return findTemplateDir(defaultTemplateId);
+        }
+        return null;
     }
 }

@@ -30,7 +30,7 @@ function renderTemplateList(templates) {
 
     container.innerHTML = templates.map(template => `
         <div class="template-item" onclick="selectTemplate('${template.templateId}')">
-            <div class="template-name">${template.description || template.templateId}</div>
+            <div class="template-name">${template.description || template.templateId}${template.defaultTemplate ? ' <span style="color: #28a745; font-size: 0.85em;">[默认]</span>' : ''}</div>
             <span class="template-direction">${template.direction === 'caller' ? '向下' : '向上'}</span>
         </div>
     `).join('');
@@ -64,6 +64,22 @@ async function showTemplateDetail() {
     document.getElementById('detailTemplateId').textContent = currentTemplate.templateId;
     document.getElementById('detailTemplateDescription').textContent = currentTemplate.description || '-';
     document.getElementById('detailDirection').textContent = currentTemplate.direction === 'caller' ? '向下调用链' : '向上调用链';
+
+    // 显示默认模板标记
+    const isDefaultTemplate = currentTemplate.defaultTemplate === true;
+    document.getElementById('detailDefaultTemplateRow').style.display = isDefaultTemplate ? '' : 'none';
+    document.getElementById('detailDefaultTemplateTipRow').style.display = isDefaultTemplate ? '' : 'none';
+
+    // 默认模板隐藏执行按钮
+    if (isDefaultTemplate) {
+        document.querySelectorAll('#templateDetail .panel-actions .btn-success, #templateDetail .panel-actions .btn-warning').forEach(btn => {
+            btn.style.display = 'none';
+        });
+    } else {
+        document.querySelectorAll('#templateDetail .panel-actions .btn-success, #templateDetail .panel-actions .btn-warning').forEach(btn => {
+            btn.style.display = '';
+        });
+    }
 
     // 检查项目是否正在执行，如果是则禁用模板按钮
     await checkProjectExecutionAndDisableButtons();
@@ -107,8 +123,11 @@ function showCreateTemplateModal() {
     document.getElementById('createTemplateForm').classList.remove('hidden');
     // 清空表单
     document.getElementById('templateDescription').value = '';
+    document.getElementById('templateDescription').disabled = false;
     document.getElementById('templateDirection').value = 'caller';
+    document.getElementById('isDefaultTemplate').checked = false;
     document.getElementById('entryPoints').value = '';
+    document.getElementById('entryPoints').disabled = false;
     document.getElementById('enableFindStack').checked = false;
     document.getElementById('findStackKeywords').value = '';
     document.getElementById('findStackKeywordsGroup').style.display = 'none';
@@ -242,9 +261,44 @@ function getTemplateConfigDefinitions() {
         mainConfig: mainConfig,
         dbConfig: templateConfigDefinitions.jacg.dbConfig || [],
         listConfig: templateConfigDefinitions.jacg.listConfig || [],
-        setConfig: templateConfigDefinitions.jacg.setConfig || [],
+        setConfig: processSetConfigForDefaultTemplate(templateConfigDefinitions.jacg.setConfig || []),
         elConfig: templateConfigDefinitions.jacg.elConfig || []
     };
+}
+
+/**
+ * 处理Set配置：根据当前模板是否为默认模板，设置入口类/方法配置的可编辑性
+ * 后端已将 OCFUSE_METHOD_CLASS_4CALLEE/OCFUSE_METHOD_CLASS_4CALLER 标记为 editable=false
+ * 对于非默认模板，需要恢复为可编辑
+ */
+function processSetConfigForDefaultTemplate(setConfig) {
+    const isDefaultTemplate = isCurrentDefaultTemplate();
+    return setConfig.map(config => {
+        // 后端已将入口类/方法配置标记为 editable=false
+        // 对于非默认模板，需要恢复为可编辑
+        if (config.editable === false && !isDefaultTemplate) {
+            return Object.assign({}, config, { editable: true });
+        }
+        return config;
+    });
+}
+
+/**
+ * 判断当前是否为默认模板
+ * 编辑模板时根据 currentTemplate.defaultTemplate 判断
+ * 创建模板时根据"是否默认模板"复选框判断
+ */
+function isCurrentDefaultTemplate() {
+    // 编辑模板时，根据 currentTemplate 判断
+    if (currentTemplate && currentTemplate.defaultTemplate === true) {
+        return true;
+    }
+    // 创建模板时，根据"是否默认模板"复选框判断
+    const isDefaultCheckbox = document.getElementById('isDefaultTemplate');
+    if (isDefaultCheckbox && isDefaultCheckbox.checked) {
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -271,15 +325,16 @@ async function createTemplate() {
     );
     if (enableFindStack && findStackKeywords.length > 0) {
         if (direction === 'caller') {
-            listConfig['OCFULE_FIND_STACK_KEYWORD_4ER'] = findStackKeywords;
+            listConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4ER] = findStackKeywords;
         } else {
-            listConfig['OCFULE_FIND_STACK_KEYWORD_4EE'] = findStackKeywords;
+            listConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4EE] = findStackKeywords;
         }
     }
 
     const templateData = {
         description: description,
         direction: direction,
+        defaultTemplate: document.getElementById('isDefaultTemplate')?.checked || false,
         jacgConfig: {
             mainConfig: templateConfig ? templateConfig.mainConfig : {},
             dbConfig: templateConfig ? templateConfig.dbConfig : {},
@@ -288,8 +343,8 @@ async function createTemplate() {
                 {},
                 templateConfig ? templateConfig.setConfig : {},
                 direction === 'caller' 
-                    ? { 'OCFUSE_METHOD_CLASS_4CALLER': entryPoints }
-                    : { 'OCFUSE_METHOD_CLASS_4CALLEE': entryPoints }
+                    ? { [JacgEnum.OCFUSE_METHOD_CLASS_4CALLER]: entryPoints }
+                    : { [JacgEnum.OCFUSE_METHOD_CLASS_4CALLEE]: entryPoints }
             ),
             elConfig: templateConfig ? templateConfig.elConfig : {}
         }
@@ -330,14 +385,14 @@ function editTemplate() {
         ? currentTemplate.jacgConfig.listConfig 
         : {};
     const entryPoints = currentTemplate.direction === 'caller' 
-        ? (setConfig['OCFUSE_METHOD_CLASS_4CALLER'] || [])
-        : (setConfig['OCFUSE_METHOD_CLASS_4CALLEE'] || []);
+        ? (setConfig[JacgEnum.OCFUSE_METHOD_CLASS_4CALLER] || [])
+        : (setConfig[JacgEnum.OCFUSE_METHOD_CLASS_4CALLEE] || []);
     const entryPointsText = entryPoints.join('\n');
     
     // 获取关键字配置
     const findStackKeywords = currentTemplate.direction === 'caller' 
-        ? (listConfig['OCFULE_FIND_STACK_KEYWORD_4ER'] || [])
-        : (listConfig['OCFULE_FIND_STACK_KEYWORD_4EE'] || []);
+        ? (listConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4ER] || [])
+        : (listConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4EE] || []);
     const findStackKeywordsText = findStackKeywords.join('\n');
     const enableFindStack = findStackKeywords.length > 0;
     
@@ -350,6 +405,14 @@ function editTemplate() {
     document.getElementById('editTemplateDescription').value = currentTemplate.description || '';
     document.getElementById('editTemplateDirection').value = currentTemplate.direction || 'caller';
     document.getElementById('editEntryPoints').value = entryPointsText;
+
+    // 默认模板禁止修改描述、方向、入口类/方法
+    const isDefaultTemplate = currentTemplate.defaultTemplate === true;
+    document.getElementById('editTemplateDescription').disabled = isDefaultTemplate;
+    document.getElementById('editTemplateDirection').disabled = isDefaultTemplate;
+    document.getElementById('editEntryPoints').disabled = isDefaultTemplate;
+    document.getElementById('editDefaultTemplateInfoGroup').style.display = isDefaultTemplate ? '' : 'none';
+
     document.getElementById('editEnableFindStack').checked = enableFindStack;
     document.getElementById('editFindStackKeywords').value = findStackKeywordsText;
     document.getElementById('editFindStackKeywordsGroup').style.display = enableFindStack ? 'block' : 'none';
@@ -484,8 +547,8 @@ async function updateTemplate() {
         {},
         templateConfig ? templateConfig.setConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.setConfig : {}),
         direction === 'caller' 
-            ? { 'OCFUSE_METHOD_CLASS_4CALLER': entryPoints }
-            : { 'OCFUSE_METHOD_CLASS_4CALLEE': entryPoints }
+            ? { [JacgEnum.OCFUSE_METHOD_CLASS_4CALLER]: entryPoints }
+            : { [JacgEnum.OCFUSE_METHOD_CLASS_4CALLEE]: entryPoints }
     );
 
     // 构建listConfig，包含关键字配置
@@ -495,9 +558,9 @@ async function updateTemplate() {
     );
     if (enableFindStack && findStackKeywords.length > 0) {
         if (direction === 'caller') {
-            finalListConfig['OCFULE_FIND_STACK_KEYWORD_4ER'] = findStackKeywords;
+            finalListConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4ER] = findStackKeywords;
         } else {
-            finalListConfig['OCFULE_FIND_STACK_KEYWORD_4EE'] = findStackKeywords;
+            finalListConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4EE] = findStackKeywords;
         }
     }
 
@@ -510,7 +573,6 @@ async function updateTemplate() {
                 direction: direction,
                 jacgConfig: {
                     mainConfig: templateConfig ? templateConfig.mainConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.mainConfig : {}),
-                    dbConfig: templateConfig ? templateConfig.dbConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.dbConfig : {}),
                     listConfig: finalListConfig,
                     setConfig: finalSetConfig,
                     elConfig: templateConfig ? templateConfig.elConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.elConfig : {})
@@ -559,8 +621,8 @@ async function applyTemplate() {
         {},
         templateConfig ? templateConfig.setConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.setConfig : {}),
         direction === 'caller' 
-            ? { 'OCFUSE_METHOD_CLASS_4CALLER': entryPoints }
-            : { 'OCFUSE_METHOD_CLASS_4CALLEE': entryPoints }
+            ? { [JacgEnum.OCFUSE_METHOD_CLASS_4CALLER]: entryPoints }
+            : { [JacgEnum.OCFUSE_METHOD_CLASS_4CALLEE]: entryPoints }
     );
 
     // 构建listConfig，包含关键字配置
@@ -570,9 +632,9 @@ async function applyTemplate() {
     );
     if (enableFindStack && findStackKeywords.length > 0) {
         if (direction === 'caller') {
-            finalListConfig['OCFULE_FIND_STACK_KEYWORD_4ER'] = findStackKeywords;
+            finalListConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4ER] = findStackKeywords;
         } else {
-            finalListConfig['OCFULE_FIND_STACK_KEYWORD_4EE'] = findStackKeywords;
+            finalListConfig[JacgEnum.OCFULE_FIND_STACK_KEYWORD_4EE] = findStackKeywords;
         }
     }
 
@@ -585,7 +647,6 @@ async function applyTemplate() {
                 direction: direction,
                 jacgConfig: {
                     mainConfig: templateConfig ? templateConfig.mainConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.mainConfig : {}),
-                    dbConfig: templateConfig ? templateConfig.dbConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.dbConfig : {}),
                     listConfig: finalListConfig,
                     setConfig: finalSetConfig,
           elConfig: templateConfig ? templateConfig.elConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.elConfig : {})
@@ -928,5 +989,44 @@ function updateEditFindStackKeywordsLabel() {
     const label = document.getElementById('editFindStackKeywordsLabel');
     if (label) {
         label.textContent = direction === 'caller' ? '关键字（向下调用链）' : '关键字（向上调用链）';
+    }
+}
+
+// ============================================================
+// 默认模板相关
+// ============================================================
+
+/**
+ * 默认模板开关切换
+ */
+function onDefaultTemplateToggle() {
+    const isDefault = document.getElementById('isDefaultTemplate')?.checked || false;
+    // 默认模板时，描述字段自动填充固定描述并禁用
+    const descInput = document.getElementById('templateDescription');
+    const entryPointsInput = document.getElementById('entryPoints');
+    const direction = document.getElementById('templateDirection')?.value || 'caller';
+    if (isDefault) {
+        descInput.value = direction === 'caller' ? 'default_template_4er' : 'default_template_4ee';
+        descInput.disabled = true;
+        // 默认模板入口类/方法使用占位符且禁止修改
+        entryPointsInput.value = '${place_holder}';
+        entryPointsInput.disabled = true;
+    } else {
+        descInput.value = '';
+        descInput.disabled = false;
+        entryPointsInput.value = '';
+        entryPointsInput.disabled = false;
+    }
+}
+
+/**
+ * 默认模板方向变化时更新描述
+ */
+function onDefaultTemplateDirectionChange() {
+    const isDefault = document.getElementById('isDefaultTemplate')?.checked || false;
+    if (isDefault) {
+        const descInput = document.getElementById('templateDescription');
+        const direction = document.getElementById('templateDirection')?.value || 'caller';
+        descInput.value = direction === 'caller' ? 'default_template_4er' : 'default_template_4ee';
     }
 }

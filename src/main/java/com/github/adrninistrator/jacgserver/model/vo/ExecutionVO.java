@@ -62,6 +62,11 @@ public class ExecutionVO implements Serializable {
      */
     private Long duration;
 
+    /**
+     * 日志文件路径
+     */
+    private String logFilePath;
+
     public String getExecId() {
         return execId;
     }
@@ -140,5 +145,13 @@ public class ExecutionVO implements Serializable {
 
     public void setDuration(Long duration) {
         this.duration = duration;
+    }
+
+    public String getLogFilePath() {
+        return logFilePath;
+    }
+
+    public void setLogFilePath(String logFilePath) {
+        this.logFilePath = logFilePath;
     }
 }

@@ -5,8 +5,11 @@ apply plugin: 'idea'
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
 
+// 应用测试配置
+apply from: 'test.gradle'
+
 group 'com.github.adrninistrator'
-version = "0.0.1"
+version = "0.0.2"
 def projectName = "java-all-call-graph-server"
 description = "${projectName}"
 sourceCompatibility = 1.8
@@ -57,7 +60,7 @@ sourceSets {
     }
 }
 
-List java_all_call_graph = ['com.github.adrninistrator:java-all-call-graph:4.0.7']
+List java_all_call_graph = ['com.github.adrninistrator:java-all-call-graph:4.1.0']
 
 // 版本号变量
 def springFrameworkVersion = '5.3.39'
@@ -104,11 +107,14 @@ List spring_boot = [
         'org.springframework.boot:spring-boot-starter-web',
         'org.springframework.boot:spring-boot-starter-log4j2',
         'org.springframework.boot:spring-boot-starter-jdbc',
+        'org.springframework.boot:spring-boot-starter-actuator',
         'org.mybatis.spring.boot:mybatis-spring-boot-starter:2.3.2'
 ]
 
 // H2数据库依赖
 List h2 = ['com.h2database:h2:2.2.224']
+
+List json_path = ['com.jayway.jsonpath:json-path:2.9.0']
 
 List spring_boot_test = ['org.springframework.boot:spring-boot-starter-test']
 
@@ -118,7 +124,7 @@ configurations {
 
 dependencies {
     implementation spring_boot, java_all_call_graph, log4j, disruptor, jackson, spring_framework, commons, h2
-    testImplementation spring_boot_test, junit
+    testImplementation spring_boot_test, junit, json_path
 }
 
 compileJava.options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation"
@@ -153,8 +159,9 @@ idea {
         // and some extra dirs that should be excluded by IDEA
         excludeDirs += file('.idea')
         excludeDirs += file('gradle')
-        excludeDirs += file('bat')
+        excludeDirs += file('start_script')
         excludeDirs += file('shell')
+        excludeDirs += file('local')
         excludeDirs += file('prompt')
         excludeDirs += file('project_conf')
         excludeDirs += file('log')
@@ -215,11 +222,11 @@ tasks.register('copyConfigFiles', Copy) {
 // ============================================================
 
 tasks.register('copyStartScripts', Copy) {
-    description = '拷贝启动脚本到构建目录（start.bat等）'
+    description = '拷贝启动脚本到构建目录（start.bat/start.sh等）'
     group = 'build'
 
-    from 'bat'
-    include '*.bat'
+    from 'start_script'
+    include '*.bat', '*.sh'
     into "${buildDir}/libs"
 
     // 设置文件权限（对Unix系统有效）
@@ -246,7 +253,7 @@ tasks.register('printBuildInfo') {
         println "构建目录: ${buildDir}"
         println "输出文件: ${buildDir}/libs/${projectName}.jar"
         println "配置目录: ${buildDir}/libs/conf"
-        println "启动脚本: ${buildDir}/libs/start.bat"
+        println "启动脚本: ${buildDir}/libs/start.bat / start.sh"
         println '============================================================'
         println ''
         println '构建命令:'
@@ -266,3 +273,5 @@ tasks.register('printBuildInfo') {
 
 // 构建完成后打印信息
 bootJar.finalizedBy(printBuildInfo)
+
+// 构建命令 gradlew bootJar

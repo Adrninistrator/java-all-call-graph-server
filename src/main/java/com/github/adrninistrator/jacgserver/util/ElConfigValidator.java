@@ -8,6 +8,7 @@ import com.adrninistrator.javacg2.el.enums.JavaCG2ElConfigEnum;
 import com.adrninistrator.javacg2.el.enums.interfaces.ElConfigInterface;
 import com.adrninistrator.javacg2.el.manager.JavaCG2ElManager;
 import com.adrninistrator.javacg2.exceptions.JavaCG2ElConfigRuntimeException;
+import com.github.adrninistrator.jacgserver.constant.ComponentEnum;
 import com.github.adrninistrator.jacgserver.exception.ElConfigCheckException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,8 +42,8 @@ public class ElConfigValidator {
 
         try {
             // 创建JavaCG2ElManager进行检查
-            JavaCG2ElManager javaCG2ElManager = new JavaCG2ElManager(wrapper, JavaCG2ElConfigEnum.values(), null);
-            logger.info("JavaCG2表达式配置参数检查通过");
+            JavaCG2ElManager javacg2ElManager = new JavaCG2ElManager(wrapper, JavaCG2ElConfigEnum.values(), null);
+            logger.info("{}表达式配置参数检查通过", ComponentEnum.JAVACG2.getShortName());
         } catch (JavaCG2ElConfigRuntimeException e) {
             // 获取检查不通过的表达式枚举
             ElConfigInterface elConfig = e.getElConfig();
@@ -55,8 +56,8 @@ public class ElConfigValidator {
             String elText = wrapper.getElConfigText(elConfig);
             String errorMessage = e.getMessage();
             
-            logger.error("JavaCG2表达式配置参数检查失败: {} - {}", elConfigEnumName, errorMessage);
-            throw new ElConfigCheckException("java-callgraph2", elConfigEnumName, configFileName, configDescription, elText, errorMessage);
+            logger.error("{}表达式配置参数检查失败: {} - {}", ComponentEnum.JAVACG2.getShortName(), elConfigEnumName, errorMessage);
+            throw new ElConfigCheckException(ComponentEnum.JAVACG2.getShortName(), elConfigEnumName, configFileName, configDescription, elText, errorMessage);
         }
     }
 
@@ -74,7 +75,7 @@ public class ElConfigValidator {
         try {
             // 创建ElManager进行检查
             ElManager elManager = new ElManager(wrapper, ElConfigEnum.values(), null);
-            logger.info("JACG表达式配置参数检查通过");
+            logger.info("{}表达式配置参数检查通过", ComponentEnum.JACG.getShortName());
         } catch (JavaCG2ElConfigRuntimeException e) {
             // 获取检查不通过的表达式枚举
             ElConfigInterface elConfig = e.getElConfig();
@@ -87,8 +88,8 @@ public class ElConfigValidator {
             String elText = wrapper.getElConfigText(elConfig);
             String errorMessage = e.getMessage();
             
-            logger.error("JACG表达式配置参数检查失败: {} - {}", elConfigEnumName, errorMessage);
-            throw new ElConfigCheckException("java-all-call-graph", elConfigEnumName, configFileName, configDescription, elText, errorMessage);
+            logger.error("{}表达式配置参数检查失败: {} - {}", ComponentEnum.JACG.getShortName(), elConfigEnumName, errorMessage);
+            throw new ElConfigCheckException(ComponentEnum.JACG.getShortName(), elConfigEnumName, configFileName, configDescription, elText, errorMessage);
         }
     }
 
