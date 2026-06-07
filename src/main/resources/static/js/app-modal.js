@@ -493,9 +493,9 @@ async function queryTemplateExecutionRecords(pageNum = 1) {
     // 构建查询URL
     let url;
     if (currentTemplateRecordType === 'callgraph') {
-        url = `${API_BASE}/template/execution/call-graph/records/${currentTemplate.templateId}?page=${pageNum}&pageSize=${pageSize}`;
+        url = `${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}/call-graph/records?page=${pageNum}&pageSize=${pageSize}`;
     } else {
-        url = `${API_BASE}/template/execution/find-stack/records/${currentTemplate.templateId}?page=${pageNum}&pageSize=${pageSize}`;
+        url = `${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}/find-stack/records?page=${pageNum}&pageSize=${pageSize}`;
     }
     
     if (minStartTime) {
@@ -653,9 +653,9 @@ async function showTemplateExecutionRecordDetail(id, type) {
     try {
         let url;
         if (type === 'callgraph') {
-            url = `${API_BASE}/template/execution/call-graph/detail/${id}`;
+            url = `${API_BASE}/call-graph/detail/${id}`;
         } else {
-            url = `${API_BASE}/template/execution/find-stack/detail/${id}`;
+            url = `${API_BASE}/find-stack/detail/${id}`;
         }
         
         const response = await fetch(url);
@@ -787,7 +787,7 @@ async function showCallGraphFilesModal(recordId) {
     document.body.insertAdjacentHTML('beforeend', modalHtml);
     
     try {
-        const response = await fetch(`${API_BASE}/template/execution/call-graph/files/${recordId}`);
+        const response = await fetch(`${API_BASE}/call-graph/files/${recordId}`);
         const result = await response.json();
 
         if (result.code === 200) {

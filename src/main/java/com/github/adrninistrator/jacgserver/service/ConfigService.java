@@ -129,4 +129,15 @@ public interface ConfigService {
      * @return 组件通用说明文件内容，如果不存在返回null
      */
     String getElUsageComponentContent(String type);
+
+    /**
+     * 查找模板目录路径
+     * 当指定projectId时，直接在对应项目目录下查找模板，避免遍历查找
+     * 当未指定projectId时，遍历所有项目目录查找模板（存在多个项目存在同名模板时可能找错目录）
+     *
+     * @param templateId 模板ID
+     * @param projectId  项目ID（可选，用于精确查找）
+     * @return 模板目录的绝对路径，不存在则返回null
+     */
+    String findTemplateDir(String templateId, String projectId);
 }

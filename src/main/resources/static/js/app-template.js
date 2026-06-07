@@ -29,7 +29,7 @@ function renderTemplateList(templates) {
     }
 
     container.innerHTML = templates.map(template => `
-        <div class="template-item" onclick="selectTemplate('${template.templateId}')">
+        <div class="template-item" onclick="selectTemplate('${currentProject.projectId}', '${template.templateId}')">
             <div class="template-name">${template.description || template.templateId}${template.defaultTemplate ? ' <span style="color: #28a745; font-size: 0.85em;">[默认]</span>' : ''}</div>
             <span class="template-direction">${template.direction === 'caller' ? '向下' : '向上'}</span>
         </div>
@@ -39,9 +39,9 @@ function renderTemplateList(templates) {
 /**
  * 选择模板
  */
-async function selectTemplate(templateId) {
+async function selectTemplate(projectId, templateId) {
     try {
-        const response = await fetch(`${API_BASE}/templates/${templateId}`);
+        const response = await fetch(`${API_BASE}/projects/${projectId}/templates/${templateId}`);
         const result = await response.json();
         if (result.code === 200) {
             currentTemplate = result.data;
@@ -565,7 +565,7 @@ async function updateTemplate() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/templates/${currentTemplate.templateId}`, {
+        const response = await fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -584,7 +584,7 @@ async function updateTemplate() {
             closeTemplateModal();
             closeTemplateConfigModal();
             // 重新加载模板详情以更新 currentTemplate 对象
-            await selectTemplate(currentTemplate.templateId);
+            await selectTemplate(currentProject.projectId, currentTemplate.templateId);
             // 同时刷新模板列表，更新列表中的方向显示
             loadTemplates(currentProject.projectId);
             showToast('更新成功', 'success');
@@ -639,7 +639,7 @@ async function applyTemplate() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/templates/${currentTemplate.templateId}`, {
+        const response = await fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -649,7 +649,7 @@ async function applyTemplate() {
                     mainConfig: templateConfig ? templateConfig.mainConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.mainConfig : {}),
                     listConfig: finalListConfig,
                     setConfig: finalSetConfig,
-          elConfig: templateConfig ? templateConfig.elConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.elConfig : {})
+                    elConfig: templateConfig ? templateConfig.elConfig : (currentTemplate.jacgConfig ? currentTemplate.jacgConfig.elConfig : {})
                 }
             })
         });
@@ -658,7 +658,7 @@ async function applyTemplate() {
             // 不关闭窗口，只刷新数据
             loadTemplates(currentProject.projectId);
             // 更新当前模板数据
-            const templateResponse = await fetch(`${API_BASE}/templates/${currentTemplate.templateId}`);
+            const templateResponse = await fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}`);
             const templateResult = await templateResponse.json();
             if (templateResult.code === 200) {
                 currentTemplate = templateResult.data;
@@ -684,7 +684,7 @@ async function deleteTemplate() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/templates/${currentTemplate.templateId}`, {
+        const response = await fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}`, {
             method: 'DELETE'
         });
         const result = await response.json();
@@ -725,7 +725,7 @@ async function doCopyTemplate() {
     const description = document.getElementById('copyTemplateDescription').value;
 
     try {
-        const response = await fetch(`${API_BASE}/templates/${currentTemplate.templateId}/copy`, {
+        const response = await fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}/copy`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ description: description })
@@ -785,7 +785,7 @@ async function executeCallGraph() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/templates/${currentTemplate.templateId}/execute/callgraph`, {
+        const response = await fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}/execute/callgraph`, {
             method: 'POST'
         });
         const result = await response.json();
@@ -820,7 +820,7 @@ async function executeFindStack() {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/templates/${currentTemplate.templateId}/execute/findstack`, {
+        const response = await fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${currentTemplate.templateId}/execute/findstack`, {
             method: 'POST'
         });
         const result = await response.json();
@@ -851,7 +851,7 @@ async function pollTemplateExecutionStatus(templateId, executeBtn, buttonText = 
     try {
         // 同时检查模板和项目的执行状态
         const [templateResponse, projectResponse] = await Promise.all([
-            fetch(`${API_BASE}/templates/${templateId}/executing`),
+            fetch(`${API_BASE}/projects/${currentProject.projectId}/templates/${templateId}/executing`),
             fetch(`${API_BASE}/projects/${currentProject.projectId}/executing`)
         ]);
         const templateResult = await templateResponse.json();

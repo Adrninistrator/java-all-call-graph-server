@@ -19,6 +19,7 @@ import com.github.adrninistrator.jacgserver.model.entity.CallGraphExecutionRecor
 import com.github.adrninistrator.jacgserver.model.entity.CallGraphFileInfo;
 import com.github.adrninistrator.jacgserver.model.entity.ExecutionRecord;
 import com.github.adrninistrator.jacgserver.model.entity.FindStackExecutionRecord;
+import com.github.adrninistrator.jacgserver.model.entity.TemplateInfoEntity;
 import com.github.adrninistrator.jacgserver.model.vo.ExecutionVO;
 import com.github.adrninistrator.jacgserver.service.ConfigService;
 import com.github.adrninistrator.jacgserver.service.ExecuteService;
@@ -27,13 +28,19 @@ import com.github.adrninistrator.jacgserver.service.TemplateExecutionRecordServi
 import com.github.adrninistrator.jacgserver.util.ExecutionLoggerManager;
 import com.github.adrninistrator.jacgserver.util.FileUtil;
 import com.github.adrninistrator.jacgserver.util.IdGenerator;
+import com.github.adrninistrator.jacgserver.util.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +80,11 @@ public class ExecuteServiceImpl implements ExecuteService {
      * 异步执行线程池
      */
     private static final ExecutorService executorService = Executors.newCachedThreadPool();
+
+    /**
+     * 日志中用于匹配错误行的关键字
+     */
+    private static final String[] LOG_ERROR_KEYWORDS = {" error ", " 预检查失败 ", " 预处理失败 ", " 执行失败 "};
 
     @Autowired
     private ConfigService configService;
@@ -258,9 +270,9 @@ public class ExecuteServiceImpl implements ExecuteService {
     }
 
     @Override
-    public ExecutionVO executeCallGraph(String templateId) {
+    public ExecutionVO executeCallGraph(String projectId, String templateId) {
         // 查找模板目录
-        String templateDir = findTemplateDir(templateId);
+        String templateDir = configService.findTemplateDir(templateId, projectId);
         if (templateDir == null) {
             throw new TemplateNotFoundException("模板不存在: " + templateId);
         }
@@ -270,14 +282,12 @@ public class ExecuteServiceImpl implements ExecuteService {
             throw new ExecuteException("模板正在执行调用链生成，请稍后再试");
         }
 
-        // 读取模板基本信息获取projectId和direction
+        // 读取模板基本信息获取direction
         File templateInfoFile = new File(templateDir, "template.json");
         if (!templateInfoFile.exists()) {
             throw new ConfigException("模板配置文件不存在");
         }
 
-        // 简单读取模板信息
-        String projectId = readProjectIdFromTemplateInfo(templateInfoFile);
         String direction = readDirectionFromTemplateInfo(templateInfoFile);
 
         // 默认模板不支持通过页面执行
@@ -383,7 +393,7 @@ public class ExecuteServiceImpl implements ExecuteService {
         ExecutionLoggerManager.createLogger(logId, logFilePath);
 
         try {
-            String templateDir = findTemplateDir(templateId);
+            String templateDir = configService.findTemplateDir(templateId, projectId);
             
             // 直接从模板目录的配置文件读取配置
             ConfigureWrapper wrapper = new ConfigureWrapper(false, templateDir);
@@ -483,80 +493,7 @@ public class ExecuteServiceImpl implements ExecuteService {
         return FileUtil.readLastLines(logPath, lines > 0 ? lines : 100);
     }
 
-    /**
-     * 查找模板目录
-     */
-    private String findTemplateDir(String templateId) {
-        String projectConfDir = configService.getProjectConfDir();
-        File projectConfDirFile = new File(projectConfDir);
 
-        if (!projectConfDirFile.exists() || !projectConfDirFile.isDirectory()) {
-            return null;
-        }
-
-        File[] projectDirs = projectConfDirFile.listFiles(File::isDirectory);
-        if (projectDirs == null) {
-            return null;
-        }
-
-        for (File projectDir : projectDirs) {
-            File templatesDir = new File(projectDir, Constants.TEMPLATES_DIR);
-            if (templatesDir.exists() && templatesDir.isDirectory()) {
-                File templateDir = new File(templatesDir, templateId);
-                if (templateDir.exists() && templateDir.isDirectory()) {
-                    return templateDir.getAbsolutePath();
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * 从模板信息文件读取projectId
-     */
-    private String readProjectIdFromTemplateInfo(File templateInfoFile) {
-        try {
-            String content = FileUtil.readFile(templateInfoFile.getAbsolutePath());
-            if (content == null) {
-                return null;
-            }
-            // 简单解析JSON获取projectId
-            int projectIdIndex = content.indexOf("\"projectId\"");
-            if (projectIdIndex > 0) {
-                int colonIndex = content.indexOf(":", projectIdIndex);
-                int quoteStart = content.indexOf("\"", colonIndex);
-                int quoteEnd = content.indexOf("\"", quoteStart + 1);
-                return content.substring(quoteStart + 1, quoteEnd);
-            }
-        } catch (Exception e) {
-            logger.warn("读取模板projectId失败", e);
-        }
-        return null;
-    }
-
-    /**
-     * 从模板信息文件读取direction
-     */
-    private String readDirectionFromTemplateInfo(File templateInfoFile) {
-        try {
-            String content = FileUtil.readFile(templateInfoFile.getAbsolutePath());
-            if (content == null) {
-                return Constants.DIRECTION_CALLER;
-            }
-            // 简单解析JSON获取direction
-            int directionIndex = content.indexOf("\"direction\"");
-            if (directionIndex > 0) {
-                int colonIndex = content.indexOf(":", directionIndex);
-                int quoteStart = content.indexOf("\"", colonIndex);
-                int quoteEnd = content.indexOf("\"", quoteStart + 1);
-                return content.substring(quoteStart + 1, quoteEnd);
-            }
-        } catch (Exception e) {
-            logger.warn("读取模板direction失败", e);
-        }
-        return Constants.DIRECTION_CALLER; // 默认向下
-    }
 
     @Override
     public boolean isProjectExecuting(String projectId) {
@@ -634,9 +571,9 @@ public class ExecuteServiceImpl implements ExecuteService {
     }
 
     @Override
-    public ExecutionVO executeFindStack(String templateId) {
+    public ExecutionVO executeFindStack(String projectId, String templateId) {
         // 查找模板目录
-        String templateDir = findTemplateDir(templateId);
+        String templateDir = configService.findTemplateDir(templateId, projectId);
         if (templateDir == null) {
             throw new TemplateNotFoundException("模板不存在: " + templateId);
         }
@@ -646,14 +583,12 @@ public class ExecuteServiceImpl implements ExecuteService {
             throw new ExecuteException("模板正在执行调用链生成，请稍后再试");
         }
 
-        // 读取模板基本信息获取projectId和direction
+        // 读取模板基本信息获取direction
         File templateInfoFile = new File(templateDir, "template.json");
         if (!templateInfoFile.exists()) {
             throw new ConfigException("模板配置文件不存在");
         }
 
-        // 简单读取模板信息
-        String projectId = readProjectIdFromTemplateInfo(templateInfoFile);
         String direction = readDirectionFromTemplateInfo(templateInfoFile);
 
         // 默认模板不支持通过页面执行
@@ -766,7 +701,7 @@ public class ExecuteServiceImpl implements ExecuteService {
         ExecutionLoggerManager.createLogger(logId, logFilePath);
 
         try {
-            String templateDir = findTemplateDir(templateId);
+            String templateDir = configService.findTemplateDir(templateId, projectId);
             
             // 直接从模板目录的配置文件读取配置
             ConfigureWrapper wrapper = new ConfigureWrapper(false, templateDir);
@@ -1139,9 +1074,24 @@ public class ExecuteServiceImpl implements ExecuteService {
     private String findDefaultTemplateDir(String projectId, String direction) {
         String defaultTemplateId = getDefaultTemplateId(projectId, direction);
         if (defaultTemplateId != null) {
-            return findTemplateDir(defaultTemplateId);
+            return configService.findTemplateDir(defaultTemplateId, projectId);
         }
         return null;
+    }
+
+    /**
+     * 从模板信息文件使用JSON方式读取direction
+     */
+    private String readDirectionFromTemplateInfo(File templateInfoFile) {
+        try {
+            TemplateInfoEntity infoEntity = JsonUtil.fromFile(templateInfoFile, TemplateInfoEntity.class);
+            if (infoEntity != null && infoEntity.getDirection() != null) {
+                return infoEntity.getDirection();
+            }
+        } catch (Exception e) {
+            logger.warn("读取模板direction失败", e);
+        }
+        return Constants.DIRECTION_CALLER;
     }
 
     /**
@@ -1155,24 +1105,21 @@ public class ExecuteServiceImpl implements ExecuteService {
         if (logFilePath == null) {
             return null;
         }
-        try {
-            File logFile = new File(logFilePath);
-            if (!logFile.exists() || !logFile.isFile()) {
-                return null;
-            }
-            List<String> lines = java.nio.file.Files.readAllLines(logFile.toPath());
-            List<String> errorLines = new java.util.ArrayList<>();
-            for (String line : lines) {
-                if (line.contains(" ERROR ") || line.contains(" 预检查失败 ") || line.contains(" 预处理失败 ") || line.contains(" 执行失败 ")) {
-                    // 去掉行首的时间戳等前缀，保留关键错误信息
-                    String trimmed = line.trim();
-                    if (trimmed.length() > 200) {
-                        trimmed = trimmed.substring(0, 200) + "...";
+        File logFile = new File(logFilePath);
+        if (!logFile.exists() || !logFile.isFile()) {
+            return null;
+        }
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(logFile), StandardCharsets.UTF_8))) {
+            List<String> errorLines = new ArrayList<>();
+            String line;
+            while ((line = reader.readLine()) != null && errorLines.size() < 5) {
+                String lowerLine = line.toLowerCase();
+                for (String keyword : LOG_ERROR_KEYWORDS) {
+                    if (lowerLine.contains(keyword)) {
+                        errorLines.add(line.trim());
+                        break;
                     }
-                    errorLines.add(trimmed);
-                }
-                if (errorLines.size() >= 5) {
-                    break;
                 }
             }
             if (!errorLines.isEmpty()) {

@@ -47,7 +47,7 @@ public class ExecuteDefaultTemplateTool implements McpToolHandler {
                 "需要调用 query_call_graph_status 查询执行结果，包含生成调用链的方法与文件完整路径的Map。" +
                 "如果默认模板不存在，返回错误信息。")
                 .addProperty("project_id", "string", "项目ID", true)
-                .addProperty("direction", "string", "调用链方向：callee（向上调用链）或 caller（向下调用链）", true)
+                .addProperty("direction", "string", "调用链方向：callee（向上调用链，被调用方视角，查找谁调用了指定方法）或 caller（向下调用链，调用方视角，查找指定方法调用了哪些方法）", true)
                 .addArrayProperty("entry_methods", "string", "入口类/方法列表，支持以下格式：类名（如: com.example.Controller），解析该类所有方法；" +
                         "完整方法（如: com.example.Service:methodName）；" +
                         "带参数的方法（如: com.example.Service:methodName(java.lang.String)）；" +

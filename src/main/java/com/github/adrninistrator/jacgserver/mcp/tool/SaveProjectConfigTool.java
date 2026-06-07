@@ -56,7 +56,8 @@ public class SaveProjectConfigTool implements McpToolHandler {
         return new McpToolDefinition(McpToolEnum.SAVE_PROJECT_CONFIG,
                 "修改项目配置参数。支持修改java-callgraph2和java-all-call-graph组件对应的配置，" +
                 "使用合并方式更新，仅修改传入的配置项，未传入的配置项保持不变。" +
-                "建议先调用query_config（传入project_id）查询配置参数定义及当前值，了解可用的配置参数key和值格式。")
+                "建议先调用query_config（传入project_id）查询配置参数定义及当前值，了解可用的配置参数key和值格式。" +
+                "完整的枚举字段名称列表请通过 query_config 查询，或使用 definition_only=true 仅查看参数定义。")
                 .addProperty(ConfigParamEnum.PROJECT_ID.getName(), "string", "项目ID", true)
                 .addProperty(ConfigParamEnum.JAVACG2_MAIN_CONFIG.getName(), "object", "java-callgraph2主配置，key使用JavaCG2ConfigKeyEnum枚举字段名（如" + JavaCG2ConfigKeyEnum.CKE_PARSE_METHOD_CALL_TYPE_VALUE.name() + "），格式: {\"枚举字段名\": \"配置值\"}", false)
                 .addProperty(ConfigParamEnum.JAVACG2_LIST_CONFIG.getName(), "object", "java-callgraph2 List配置（有序列表，顺序有意义），key使用JavaCG2OtherConfigFileUseListEnum枚举字段名，格式: {\"枚举字段名\": [\"值1\", \"值2\"]}", false)

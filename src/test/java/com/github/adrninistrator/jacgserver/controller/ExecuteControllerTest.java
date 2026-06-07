@@ -152,7 +152,9 @@ public class ExecuteControllerTest extends BaseTest {
     @Test
     @Order(2)
     void testExecuteCallGraphTemplateNotFound() throws Exception {
-        mockMvc.perform(post("/api/v1/templates/{templateId}/execute/callgraph", "nonexistent_template_id"))
+        ensureInitialized();
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/templates/{templateId}/execute/callgraph", testProjectId, "nonexistent_template_id"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1002));
     }
@@ -160,7 +162,9 @@ public class ExecuteControllerTest extends BaseTest {
     @Test
     @Order(3)
     void testExecuteFindStackTemplateNotFound() throws Exception {
-        mockMvc.perform(post("/api/v1/templates/{templateId}/execute/findstack", "nonexistent_template_id"))
+        ensureInitialized();
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/templates/{templateId}/execute/findstack", testProjectId, "nonexistent_template_id"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1002));
     }
@@ -181,7 +185,7 @@ public class ExecuteControllerTest extends BaseTest {
     void testIsTemplateExecuting() throws Exception {
         ensureInitialized();
 
-        mockMvc.perform(get("/api/v1/templates/{templateId}/executing", testCallerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}/executing", testProjectId, testCallerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.executing").value(false));
@@ -230,7 +234,7 @@ public class ExecuteControllerTest extends BaseTest {
     void testExecuteCallGraph4Caller() throws Exception {
         ensureInitialized();
 
-        MvcResult result = mockMvc.perform(post("/api/v1/templates/{templateId}/execute/callgraph", testCallerTemplateId))
+        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/templates/{templateId}/execute/callgraph", testProjectId, testCallerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.execId").exists())
@@ -251,7 +255,7 @@ public class ExecuteControllerTest extends BaseTest {
     void testExecuteCallGraph4Callee() throws Exception {
         ensureInitialized();
 
-        MvcResult result = mockMvc.perform(post("/api/v1/templates/{templateId}/execute/callgraph", testCalleeTemplateId))
+        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/templates/{templateId}/execute/callgraph", testProjectId, testCalleeTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.execId").exists())
@@ -313,12 +317,12 @@ public class ExecuteControllerTest extends BaseTest {
         String newTemplateId = extractJsonValue(templateResult.getResponse().getContentAsString(), "$.data.templateId");
 
         // 不执行分析直接生成调用链，应返回错误
-        mockMvc.perform(post("/api/v1/templates/{templateId}/execute/callgraph", newTemplateId))
+        mockMvc.perform(post("/api/v1/projects/{projectId}/templates/{templateId}/execute/callgraph", newProjectId, newTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1004));
 
         // 清理
-        mockMvc.perform(delete("/api/v1/templates/{templateId}", newTemplateId))
+        mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", newProjectId, newTemplateId))
                 .andExpect(status().isOk());
         mockMvc.perform(delete("/api/v1/projects/{projectId}", newProjectId))
                 .andExpect(status().isOk());
@@ -367,11 +371,11 @@ public class ExecuteControllerTest extends BaseTest {
     void testCleanup() throws Exception {
         ensureInitialized();
         if (testCallerTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", testCallerTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, testCallerTemplateId))
                     .andExpect(status().isOk());
         }
         if (testCalleeTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", testCalleeTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, testCalleeTemplateId))
                     .andExpect(status().isOk());
         }
         if (testProjectId != null) {

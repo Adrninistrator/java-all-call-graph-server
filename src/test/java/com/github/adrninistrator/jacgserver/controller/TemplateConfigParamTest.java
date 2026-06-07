@@ -98,7 +98,7 @@ public class TemplateConfigParamTest extends BaseTest {
         callerTemplateId = extractJsonValue(result.getResponse().getContentAsString(), "$.data.templateId");
 
         // 查询验证 - Map配置的value为String格式
-        mockMvc.perform(get("/api/v1/templates/{templateId}", callerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.MAIN_CONFIG.getValue() + ".CKE_CALL_GRAPH_OUTPUT_DETAIL").value("2"))
@@ -127,14 +127,14 @@ public class TemplateConfigParamTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", callerTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         // 查询验证 - Map配置修改后value仍为String格式
-        mockMvc.perform(get("/api/v1/templates/{templateId}", callerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.MAIN_CONFIG.getValue() + ".CKE_CALL_GRAPH_OUTPUT_DETAIL").value("1"))
@@ -173,7 +173,7 @@ public class TemplateConfigParamTest extends BaseTest {
         calleeTemplateId = extractJsonValue(result.getResponse().getContentAsString(), "$.data.templateId");
 
         // 查询验证 - List配置的value为数组格式，顺序保留
-        mockMvc.perform(get("/api/v1/templates/{templateId}", calleeTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, calleeTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.LIST_CONFIG.getValue() + ".OCFULE_FIND_STACK_KEYWORD_4EE[0]").value("kw1"))
@@ -201,14 +201,14 @@ public class TemplateConfigParamTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", calleeTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, calleeTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         // 查询验证 - List配置修改后value仍为数组格式，顺序保留
-        mockMvc.perform(get("/api/v1/templates/{templateId}", calleeTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, calleeTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.LIST_CONFIG.getValue() + ".OCFULE_FIND_STACK_KEYWORD_4EE[0]").value("kw3"))
@@ -225,7 +225,7 @@ public class TemplateConfigParamTest extends BaseTest {
         // 先删除旧的caller模板
         if (callerTemplateId != null) {
             try {
-                mockMvc.perform(delete("/api/v1/templates/{templateId}", callerTemplateId))
+                mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                         .andExpect(status().isOk());
             } catch (Exception ignored) {
             }
@@ -253,7 +253,7 @@ public class TemplateConfigParamTest extends BaseTest {
         callerTemplateId = extractJsonValue(result.getResponse().getContentAsString(), "$.data.templateId");
 
         // 查询验证 - Set配置的value为数组格式
-        mockMvc.perform(get("/api/v1/templates/{templateId}", callerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.SET_CONFIG.getValue() + ".OCFUSE_METHOD_CLASS_4CALLER").isArray());
@@ -276,14 +276,14 @@ public class TemplateConfigParamTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", callerTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         // 查询验证 - Set配置修改后value仍为数组格式
-        mockMvc.perform(get("/api/v1/templates/{templateId}", callerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.SET_CONFIG.getValue() + ".OCFUSE_METHOD_CLASS_4CALLER").isArray());
@@ -322,7 +322,7 @@ public class TemplateConfigParamTest extends BaseTest {
         elTemplateId = extractJsonValue(mvcResult.getResponse().getContentAsString(), "$.data.templateId");
 
         // 查询验证 - EL表达式配置的value为String格式，不是数组
-        mockMvc.perform(get("/api/v1/templates/{templateId}", elTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, elTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.EL_CONFIG.getValue() + ".ECE_GEN_ALL_CALL_GRAPH_IGNORE_METHOD_CALL").value("true"))
@@ -360,14 +360,14 @@ public class TemplateConfigParamTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", elTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, elTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         // 查询验证 - EL表达式配置修改后value仍为String格式，不是数组
-        mockMvc.perform(get("/api/v1/templates/{templateId}", elTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, elTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.EL_CONFIG.getValue() + ".ECE_GEN_ALL_CALL_GRAPH_IGNORE_METHOD_CALL").value("false"))
@@ -422,14 +422,14 @@ public class TemplateConfigParamTest extends BaseTest {
         templateJacgConfig.put(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
         templateBody.put("jacgConfig", templateJacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", callerTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId)
                         .contentType("application/json")
                         .content(toJson(templateBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         // 查询模板验证数据库配置
-        mockMvc.perform(get("/api/v1/templates/{templateId}", callerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.DB_CONFIG.getValue()).exists());
@@ -457,7 +457,7 @@ public class TemplateConfigParamTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", callerTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
@@ -498,7 +498,7 @@ public class TemplateConfigParamTest extends BaseTest {
         jacgConfig.put(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
         updateBody.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", defaultCalleeId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCalleeId)
                         .contentType("application/json")
                         .content(toJson(updateBody)))
                 .andExpect(status().isOk())
@@ -506,7 +506,7 @@ public class TemplateConfigParamTest extends BaseTest {
                 .andExpect(jsonPath("$.message").value("默认模板的入口类/方法配置不允许修改"));
 
         // 清理：删除默认模板
-        mockMvc.perform(delete("/api/v1/templates/{templateId}", defaultCalleeId))
+        mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCalleeId))
                 .andExpect(status().isOk());
     }
 
@@ -544,7 +544,7 @@ public class TemplateConfigParamTest extends BaseTest {
         jacgConfig.put(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
         updateBody.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", defaultCallerId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerId)
                         .contentType("application/json")
                         .content(toJson(updateBody)))
                 .andExpect(status().isOk())
@@ -552,7 +552,7 @@ public class TemplateConfigParamTest extends BaseTest {
                 .andExpect(jsonPath("$.message").value("默认模板的入口类/方法配置不允许修改"));
 
         // 清理：删除默认模板
-        mockMvc.perform(delete("/api/v1/templates/{templateId}", defaultCallerId))
+        mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerId))
                 .andExpect(status().isOk());
     }
 
@@ -592,20 +592,20 @@ public class TemplateConfigParamTest extends BaseTest {
         jacgConfig.put(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
         updateBody.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", defaultCallerId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerId)
                         .contentType("application/json")
                         .content(toJson(updateBody)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
         // 查询验证修改生效
-        mockMvc.perform(get("/api/v1/templates/{templateId}", defaultCallerId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.MAIN_CONFIG.getValue() + ".CKE_CALL_GRAPH_OUTPUT_DETAIL").value("2"));
 
         // 清理：删除默认模板
-        mockMvc.perform(delete("/api/v1/templates/{templateId}", defaultCallerId))
+        mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerId))
                 .andExpect(status().isOk());
     }
 
@@ -616,15 +616,15 @@ public class TemplateConfigParamTest extends BaseTest {
     @Order(99)
     void testCleanup() throws Exception {
         if (calleeTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", calleeTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, calleeTemplateId))
                     .andExpect(status().isOk());
         }
         if (elTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", elTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, elTemplateId))
                     .andExpect(status().isOk());
         }
         if (callerTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", callerTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                     .andExpect(status().isOk());
         }
         if (testProjectId != null) {

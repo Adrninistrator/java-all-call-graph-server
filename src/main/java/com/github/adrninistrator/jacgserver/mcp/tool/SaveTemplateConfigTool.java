@@ -12,13 +12,14 @@ import com.github.adrninistrator.jacgserver.mcp.McpToolHandler;
 import com.github.adrninistrator.jacgserver.mcp.McpToolHelper;
 import com.github.adrninistrator.jacgserver.model.dto.JACGConfigDTO;
 import com.github.adrninistrator.jacgserver.model.dto.TemplateDTO;
-import com.github.adrninistrator.jacgserver.model.vo.TemplateVO;
 import com.github.adrninistrator.jacgserver.service.TemplateService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,14 @@ public class SaveTemplateConfigTool implements McpToolHandler {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final Set<String> KNOWN_PARAMS = ConfigParamEnum.templateConfigNames();
+    private static final Set<String> KNOWN_PARAMS;
+
+    static {
+        // 在模板配置参数基础上增加project_id（可选参数，用于快速定位模板目录）
+        Set<String> params = new HashSet<>(ConfigParamEnum.templateConfigNames());
+        params.add(ConfigParamEnum.PROJECT_ID.getName());
+        KNOWN_PARAMS = Collections.unmodifiableSet(params);
+    }
 
     @Override
     public McpToolDefinition getDefinition() {
@@ -50,8 +58,9 @@ public class SaveTemplateConfigTool implements McpToolHandler {
                 "修改模板配置参数。模板只涉及java-all-call-graph组件对应的配置参数，" +
                 "使用合并方式更新，仅修改传入的配置项，未传入的配置项保持不变。" +
                 "模板不允许修改数据库配置参数，模板使用项目的数据库配置。" +
-                "建议先调用query_config（scene=template，传入template_id）查询配置参数定义及当前值，了解可用的配置参数key和值格式。")
+                "建议先调用query_config（scene=template，传入template_id和project_id）查询配置参数定义及当前值，了解可用的配置参数key和值格式。")
                 .addProperty(ConfigParamEnum.TEMPLATE_ID.getName(), "string", "模板ID", true)
+                .addProperty(ConfigParamEnum.PROJECT_ID.getName(), "string", "模板所属项目ID", true)
                 .addProperty(ConfigParamEnum.JACG_MAIN_CONFIG.getName(), "object", "java-all-call-graph主配置，key使用ConfigKeyEnum枚举字段名（如" + ConfigKeyEnum.CKE_APP_NAME.name() + "），格式: {\"枚举字段名\": \"配置值\"}", false)
                 .addProperty(ConfigParamEnum.JACG_LIST_CONFIG.getName(), "object", "java-all-call-graph List配置（有序列表，顺序有意义），key使用OtherConfigFileUseListEnum枚举字段名，格式: {\"枚举字段名\": [\"值1\", \"值2\"]}", false)
                 .addProperty(ConfigParamEnum.JACG_SET_CONFIG.getName(), "object", "java-all-call-graph Set配置（无序集合，自动去重），key使用OtherConfigFileUseSetEnum枚举字段名，格式: {\"枚举字段名\": [\"值1\", \"值2\"]}", false)
@@ -66,18 +75,12 @@ public class SaveTemplateConfigTool implements McpToolHandler {
             return McpToolHelper.createErrorResult("模板ID不能为空");
         }
 
-        try {
-            // 获取当前模板信息
-            TemplateVO existingTemplate;
-            try {
-                existingTemplate = templateService.getTemplate(templateId);
-            } catch (BaseException e) {
-                return McpToolHelper.createOperationFailResult(e.getMessage());
-            }
-            if (existingTemplate == null) {
-                return McpToolHelper.createOperationFailResult("模板不存在: " + templateId);
-            }
+        String projectId = arguments.has(ConfigParamEnum.PROJECT_ID.getName()) ? arguments.get(ConfigParamEnum.PROJECT_ID.getName()).asText() : null;
+        if (projectId == null || projectId.trim().isEmpty()) {
+            return McpToolHelper.createErrorResult("项目ID不能为空");
+        }
 
+        try {
             // 检查未识别的参数名
             List<String> unrecognizedParams = findUnrecognizedParams(arguments, KNOWN_PARAMS);
             if (!unrecognizedParams.isEmpty()) {
@@ -86,7 +89,7 @@ public class SaveTemplateConfigTool implements McpToolHandler {
                                 "，可用的参数名: " + KNOWN_PARAMS);
             }
 
-            // 构建 JACG 配置
+            // 构建增量 JACG 配置（仅包含传入的配置类别，null表示不修改）
             JACGConfigDTO jacgConfig = new JACGConfigDTO();
 
             if (arguments.has(ConfigParamEnum.JACG_MAIN_CONFIG.getName()) && !arguments.get(ConfigParamEnum.JACG_MAIN_CONFIG.getName()).isNull()) {
@@ -118,15 +121,12 @@ public class SaveTemplateConfigTool implements McpToolHandler {
                 jacgConfig.setElConfig(merged);
             }
 
-            // 构造 TemplateDTO
+            // 构建增量 TemplateDTO（基本信息不设，由 Service 层保留当前值）
             TemplateDTO templateDTO = new TemplateDTO();
-            templateDTO.setDescription(existingTemplate.getDescription());
-            templateDTO.setDirection(existingTemplate.getDirection());
-            templateDTO.setDefaultTemplate(existingTemplate.getDefaultTemplate());
             templateDTO.setJacgConfig(jacgConfig);
 
-            // 保存配置
-            templateService.updateTemplate(templateId, templateDTO);
+            // 调用 mergeUpdateTemplate：Service 层在锁内读取当前配置 → 合并增量 → 写入
+            templateService.mergeUpdateTemplate(projectId, templateId, templateDTO);
 
             // 构造返回数据
             ObjectNode data = objectMapper.createObjectNode();

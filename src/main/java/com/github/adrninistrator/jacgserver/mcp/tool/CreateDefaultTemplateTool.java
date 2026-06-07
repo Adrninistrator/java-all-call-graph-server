@@ -46,12 +46,12 @@ public class CreateDefaultTemplateTool implements McpToolHandler {
     public McpToolDefinition getDefinition() {
         return new McpToolDefinition(McpToolEnum.CREATE_DEFAULT_TEMPLATE,
                 "在项目下创建默认模板。" +
-                "通过direction参数指定方向：callee（向上调用链，描述与ID为 default_template_4ee）或 caller（向下调用链，描述与ID为 default_template_4er）。" +
+                "通过direction参数指定方向：callee（向上调用链/被调用方视角，查找谁调用了指定方法，模板ID为 default_template_4ee）或 caller（向下调用链/调用方视角，查找指定方法调用了哪些方法，模板ID为 default_template_4er）。" +
                 "每个项目只能有一个向上和一个向下的默认模板。" +
                 "默认模板的入口类/方法自动使用占位符 ${place_holder}，执行时由MCP工具指定实际的入口类/方法。" +
                 "请求参数只需要指定项目ID和方向，降低功能复杂度。")
                 .addProperty("project_id", "string", "项目ID", true)
-                .addProperty("direction", "string", "调用链方向：callee（向上调用链）或 caller（向下调用链）", true);
+                .addProperty("direction", "string", "调用链方向：callee（向上调用链，被调用方视角，查找谁调用了指定方法）或 caller（向下调用链，调用方视角，查找指定方法调用了哪些方法）", true);
     }
 
     @Override

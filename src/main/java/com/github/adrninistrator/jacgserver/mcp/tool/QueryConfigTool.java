@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.adrninistrator.jacgserver.constant.ConfigCategoryEnum;
-import com.github.adrninistrator.jacgserver.constant.Constants;
 import com.github.adrninistrator.jacgserver.enums.ConfigSceneEnum;
 import com.github.adrninistrator.jacgserver.enums.McpToolEnum;
 import com.github.adrninistrator.jacgserver.exception.BaseException;
@@ -69,18 +68,27 @@ public class QueryConfigTool implements McpToolHandler {
                 "以及模板涉及的java-all-call-graph组件对应的配置参数。" +
                 "默认查询全部的配置参数定义，若有指定范围，则只查询指定的一个或多个配置参数定义。" +
                 "当指定project_id或template_id时，每个配置参数会同时返回当前使用的值。" +
+                "当definition_only=true时仅返回配置参数定义，不返回当前值，也不校验项目或模板是否存在。" +
                 "返回完整的参数说明，包括完整描述、枚举选项、数值范围等。")
                 .addProperty("scene", "string", "配置场景，可选值：project（项目配置，默认）、template（模板配置）", false)
-                .addProperty("project_id", "string", "项目ID（scene为project时传入后返回该项目的当前配置参数值；scene为template时可选传入，用于指定模板所属项目以加速模板目录定位）", false)
+                .addProperty("project_id", "string", "项目ID", true)
                 .addProperty("template_id", "string", "模板ID（scene为template时可传入，传入后返回该模板的当前配置参数值）", false)
-                .addArrayProperty("config_keys", "string", "需要查询的配置参数枚举字段名称列表，不指定则查询全部，如 [\"" + ConfigKeyEnum.CKE_APP_NAME.name() + "\", \"" + ConfigKeyEnum.CKE_THREAD_NUM.name() + "\"]", false);
+                .addProperty("definition_only", "boolean", "仅返回配置参数定义，不返回当前值（默认false，设为true时不会校验项目/模板是否存在）", false)
+                .addProperty("config_type", "string", "配置类别过滤，可选值：main（主配置）、db（数据库配置）、list（List配置）、set（Set配置）、el（EL表达式配置），不指定则返回全部", false)
+                .addArrayProperty("config_keys", "string", "需要查询的配置参数枚举字段名称列表，可跨类别指定（main/db/list/set/el中的key均可混合指定），不指定则查询全部，如 [\"" + ConfigKeyEnum.CKE_APP_NAME.name() + "\", \"" + ConfigKeyEnum.CKE_THREAD_NUM.name() + "\"]", false);
     }
 
     @Override
     public JsonNode handle(JsonNode arguments) {
         String sceneStr = arguments.has("scene") ? arguments.get("scene").asText("project") : "project";
         String projectId = arguments.has("project_id") ? arguments.get("project_id").asText(null) : null;
+        if (projectId == null || projectId.trim().isEmpty()) {
+            return McpToolHelper.createErrorResult("项目ID不能为空");
+        }
+
         String templateId = arguments.has("template_id") ? arguments.get("template_id").asText(null) : null;
+        boolean definitionOnly = arguments.has("definition_only") && arguments.get("definition_only").asBoolean(false);
+        String configType = arguments.has("config_type") ? arguments.get("config_type").asText(null) : null;
         Set<String> configKeys = null;
 
         if (arguments.has("config_keys") && arguments.get("config_keys").isArray()) {
@@ -109,29 +117,26 @@ public class QueryConfigTool implements McpToolHandler {
             // 使用ignoreVisibility=true，MCP接口返回所有配置参数
             ConfigDefinitionVO definitions = configService.getConfigDefinitions(scene, true);
 
-            // 读取当前配置值
+            // 读取当前配置值（definition_only=true时跳过）
             JavaCG2ConfigDTO javacg2Config = null;
             JACGConfigDTO jacgConfig = null;
             String configDir = null;
 
-            if (scene == ConfigSceneEnum.PROJECT && projectId != null && !projectId.trim().isEmpty()) {
-                // 检查项目是否存在
-                if (!projectService.projectExists(projectId)) {
-                    return McpToolHelper.createOperationFailResult("项目不存在: " + projectId);
-                }
-                configDir = configService.getProjectConfDir() + File.separator + projectId;
-                javacg2Config = ConfigReaderUtil.readJavaCG2Config(configDir);
-                jacgConfig = ConfigReaderUtil.readJACGConfig(configDir);
-            } else if (scene == ConfigSceneEnum.TEMPLATE && templateId != null && !templateId.trim().isEmpty()) {
-                // 检查模板是否存在
-                try {
-                    templateService.getTemplate(templateId);
-                } catch (BaseException e) {
-                    return McpToolHelper.createOperationFailResult("模板不存在: " + templateId);
-                }
-                // 查找模板目录（优先使用project_id定位）
-                String templateDir = findTemplateDir(templateId, projectId);
-                if (templateDir != null) {
+            if (!definitionOnly) {
+                if (scene == ConfigSceneEnum.PROJECT) {
+                    // 检查项目是否存在
+                    if (!projectService.projectExists(projectId)) {
+                        return McpToolHelper.createOperationFailResult("项目不存在: " + projectId);
+                    }
+                    configDir = configService.getProjectConfDir() + File.separator + projectId;
+                    javacg2Config = ConfigReaderUtil.readJavaCG2Config(configDir);
+                    jacgConfig = ConfigReaderUtil.readJACGConfig(configDir);
+                } else if (scene == ConfigSceneEnum.TEMPLATE && templateId != null && !templateId.trim().isEmpty()) {
+                    // 使用project_id精确查找模板目录
+                    String templateDir = configService.findTemplateDir(templateId, projectId);
+                    if (templateDir == null) {
+                        return McpToolHelper.createOperationFailResult("模板不存在: " + templateId);
+                    }
                     configDir = templateDir;
                     jacgConfig = ConfigReaderUtil.readJACGConfig(configDir);
                 }
@@ -141,19 +146,19 @@ public class QueryConfigTool implements McpToolHandler {
             data.put("scene", scene.getCode());
             data.put("sceneDesc", scene.getDesc());
 
-            if (scene == ConfigSceneEnum.PROJECT && projectId != null && !projectId.trim().isEmpty()) {
+            if (scene == ConfigSceneEnum.PROJECT) {
                 data.put("projectId", projectId);
             }
             if (templateId != null && !templateId.trim().isEmpty()) {
                 data.put("templateId", templateId);
             }
-            if (scene == ConfigSceneEnum.TEMPLATE && projectId != null && !projectId.trim().isEmpty()) {
+            if (scene == ConfigSceneEnum.TEMPLATE) {
                 data.put("projectId", projectId);
             }
 
             // 处理JavaCG2配置定义（仅在项目场景下）
             if (scene == ConfigSceneEnum.PROJECT && definitions.getJavacg2() != null) {
-                ObjectNode javacg2Node = buildJavaCG2ConfigNode(definitions.getJavacg2(), configKeys, javacg2Config);
+                ObjectNode javacg2Node = buildJavaCG2ConfigNode(definitions.getJavacg2(), configKeys, javacg2Config, configType);
                 if (javacg2Node != null) {
                     data.set("javacg2", javacg2Node);
                 }
@@ -161,7 +166,7 @@ public class QueryConfigTool implements McpToolHandler {
 
             // 处理JACG配置定义
             if (definitions.getJacg() != null) {
-                ObjectNode jacgNode = buildJacgConfigNode(definitions.getJacg(), configKeys, jacgConfig, scene);
+                ObjectNode jacgNode = buildJacgConfigNode(definitions.getJacg(), configKeys, jacgConfig, scene, configType);
                 if (jacgNode != null) {
                     data.set("jacg", jacgNode);
                 }
@@ -179,98 +184,76 @@ public class QueryConfigTool implements McpToolHandler {
         }
     }
 
-    /**
-     * 查找模板目录路径
-     * 当指定projectId时，直接在对应项目目录下查找模板，提高查找效率
-     * 当未指定projectId时，遍历所有项目目录查找模板
-     */
-    private String findTemplateDir(String templateId, String projectId) {
-        String projectConfDir = configService.getProjectConfDir();
-
-        // 若指定了project_id，直接在对应项目目录下查找模板
-        if (projectId != null && !projectId.trim().isEmpty()) {
-            String templateDir = projectConfDir + File.separator + projectId + File.separator + Constants.TEMPLATES_DIR + File.separator + templateId;
-            if (new File(templateDir).exists() && new File(templateDir).isDirectory()) {
-                return templateDir;
-            }
-            // 指定了projectId但未找到，不再遍历其他项目
-            return null;
-        }
-
-        // 未指定project_id，遍历所有项目目录查找模板
-        File projectConfDirFile = new File(projectConfDir);
-        if (!projectConfDirFile.exists()) {
-            return null;
-        }
-
-        File[] projectDirs = projectConfDirFile.listFiles(File::isDirectory);
-        if (projectDirs == null) {
-            return null;
-        }
-
-        for (File projectDir : projectDirs) {
-            File templatesDir = new File(projectDir, Constants.TEMPLATES_DIR);
-            if (!templatesDir.exists()) {
-                continue;
-            }
-            File templateDir = new File(templatesDir, templateId);
-            if (templateDir.exists() && templateDir.isDirectory()) {
-                return templateDir.getAbsolutePath();
-            }
-        }
-        return null;
-    }
-
-    private ObjectNode buildJavaCG2ConfigNode(JavaCG2ConfigDefinitionVO javacg2, Set<String> configKeys, JavaCG2ConfigDTO currentConfig) {
+    private ObjectNode buildJavaCG2ConfigNode(JavaCG2ConfigDefinitionVO javacg2, Set<String> configKeys,
+                                              JavaCG2ConfigDTO currentConfig, String configType) {
         ObjectNode node = objectMapper.createObjectNode();
 
-        ArrayNode mainConfig = convertConfigItems(javacg2.getMainConfig(), configKeys,
-                currentConfig != null ? currentConfig.getMainConfig() : null, false);
-        if (mainConfig != null) {
-            node.set(ConfigCategoryEnum.MAIN_CONFIG.getValue(), mainConfig);
+        if (configType == null || "main".equalsIgnoreCase(configType)) {
+            ArrayNode mainConfig = convertConfigItems(javacg2.getMainConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getMainConfig() : null, false);
+            if (mainConfig != null) {
+                node.set(ConfigCategoryEnum.MAIN_CONFIG.getValue(), mainConfig);
+            }
         }
-        ArrayNode listConfig = convertOtherConfigItems(javacg2.getListConfig(), configKeys,
-                currentConfig != null ? currentConfig.getListConfig() : null, ConfigSceneEnum.PROJECT);
-        if (listConfig != null) {
-            node.set(ConfigCategoryEnum.LIST_CONFIG.getValue(), listConfig);
+        if (configType == null || "list".equalsIgnoreCase(configType)) {
+            ArrayNode listConfig = convertOtherConfigItems(javacg2.getListConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getListConfig() : null, ConfigSceneEnum.PROJECT);
+            if (listConfig != null) {
+                node.set(ConfigCategoryEnum.LIST_CONFIG.getValue(), listConfig);
+            }
         }
-        ArrayNode setConfig = convertOtherConfigItems(javacg2.getSetConfig(), configKeys,
-                currentConfig != null ? currentConfig.getSetConfig() : null, ConfigSceneEnum.PROJECT);
-        if (setConfig != null) {
-            node.set(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
+        if (configType == null || "set".equalsIgnoreCase(configType)) {
+            ArrayNode setConfig = convertOtherConfigItems(javacg2.getSetConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getSetConfig() : null, ConfigSceneEnum.PROJECT);
+            if (setConfig != null) {
+                node.set(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
+            }
         }
-        // JavaCG2的elConfig也是OtherConfigItemVO类型，但EL配置的currentValue为字符串而非数组
-        ArrayNode elConfig = convertElConfigItems(javacg2.getElConfig(), configKeys,
-                currentConfig != null ? currentConfig.getElConfig() : null);
-        if (elConfig != null) {
-            node.set(ConfigCategoryEnum.EL_CONFIG.getValue(), elConfig);
+        if (configType == null || "el".equalsIgnoreCase(configType)) {
+            ArrayNode elConfig = convertElConfigItems(javacg2.getElConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getElConfig() : null);
+            if (elConfig != null) {
+                node.set(ConfigCategoryEnum.EL_CONFIG.getValue(), elConfig);
+            }
         }
         return node.size() > 0 ? node : null;
     }
 
-    private ObjectNode buildJacgConfigNode(JACGConfigDefinitionVO jacg, Set<String> configKeys, JACGConfigDTO currentConfig, ConfigSceneEnum scene) {
+    private ObjectNode buildJacgConfigNode(JACGConfigDefinitionVO jacg, Set<String> configKeys,
+                                           JACGConfigDTO currentConfig, ConfigSceneEnum scene, String configType) {
         ObjectNode node = objectMapper.createObjectNode();
 
-        ArrayNode mainConfig = convertConfigItems(jacg.getMainConfig(), configKeys,
-                currentConfig != null ? currentConfig.getMainConfig() : null, false);
-        if (mainConfig != null) {
-            node.set(ConfigCategoryEnum.MAIN_CONFIG.getValue(), mainConfig);
+        if (configType == null || "main".equalsIgnoreCase(configType)) {
+            ArrayNode mainConfig = convertConfigItems(jacg.getMainConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getMainConfig() : null, false);
+            if (mainConfig != null) {
+                node.set(ConfigCategoryEnum.MAIN_CONFIG.getValue(), mainConfig);
+            }
         }
         // 模板场景下dbConfig为只读，继承自项目
-        ArrayNode dbConfig = convertConfigItems(jacg.getDbConfig(), configKeys,
-                currentConfig != null ? currentConfig.getDbConfig() : null, scene == ConfigSceneEnum.TEMPLATE);
-        if (dbConfig != null) {
-            node.set(ConfigCategoryEnum.DB_CONFIG.getValue(), dbConfig);
+        if (configType == null || "db".equalsIgnoreCase(configType)) {
+            ArrayNode dbConfig = convertConfigItems(jacg.getDbConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getDbConfig() : null, scene == ConfigSceneEnum.TEMPLATE);
+            if (dbConfig != null) {
+                if (scene == ConfigSceneEnum.TEMPLATE) {
+                    node.put(ConfigCategoryEnum.DB_CONFIG.getValue() + "__note", "以下数据库配置参数属于项目配置，模板使用项目的数据库配置，不允许独立修改");
+                }
+                node.set(ConfigCategoryEnum.DB_CONFIG.getValue(), dbConfig);
+            }
         }
-        ArrayNode listConfig = convertOtherConfigItems(jacg.getListConfig(), configKeys,
-                currentConfig != null ? currentConfig.getListConfig() : null, scene);
-        if (listConfig != null) {
-            node.set(ConfigCategoryEnum.LIST_CONFIG.getValue(), listConfig);
+        if (configType == null || "list".equalsIgnoreCase(configType)) {
+            ArrayNode listConfig = convertOtherConfigItems(jacg.getListConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getListConfig() : null, scene);
+            if (listConfig != null) {
+                node.set(ConfigCategoryEnum.LIST_CONFIG.getValue(), listConfig);
+            }
         }
-        ArrayNode setConfig = convertOtherConfigItems(jacg.getSetConfig(), configKeys,
-                currentConfig != null ? currentConfig.getSetConfig() : null, scene);
-        if (setConfig != null) {
-            node.set(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
+        if (configType == null || "set".equalsIgnoreCase(configType)) {
+            ArrayNode setConfig = convertOtherConfigItems(jacg.getSetConfig(), configKeys,
+                    currentConfig != null ? currentConfig.getSetConfig() : null, scene);
+            if (setConfig != null) {
+                node.set(ConfigCategoryEnum.SET_CONFIG.getValue(), setConfig);
+            }
         }
         // JACG的elConfig也是OtherConfigItemVO类型，但EL配置的currentValue为字符串而非数组
         ArrayNode elConfig = convertElConfigItems(jacg.getElConfig(), configKeys,

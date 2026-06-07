@@ -88,7 +88,7 @@ public class TemplateExecutionRecordControllerTest extends BaseTest {
     void testQueryCallGraphRecordsEmpty() throws Exception {
         ensureInitialized();
 
-        mockMvc.perform(get("/api/v1/template/execution/call-graph/records/{templateId}", testTemplateId)
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}/call-graph/records", testProjectId, testTemplateId)
                         .param("page", "1")
                         .param("pageSize", "10"))
                 .andExpect(status().isOk())
@@ -103,7 +103,7 @@ public class TemplateExecutionRecordControllerTest extends BaseTest {
     @Test
     @Order(2)
     void testQueryCallGraphRecordsWithTimeFilter() throws Exception {
-        mockMvc.perform(get("/api/v1/template/execution/call-graph/records/{templateId}", testTemplateId)
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}/call-graph/records", testProjectId, testTemplateId)
                         .param("minStartTime", "2020-01-01 00:00:00")
                         .param("page", "1")
                         .param("pageSize", "10"))
@@ -118,7 +118,7 @@ public class TemplateExecutionRecordControllerTest extends BaseTest {
     @Test
     @Order(3)
     void testGetCallGraphDetailNotFound() throws Exception {
-        mockMvc.perform(get("/api/v1/template/execution/call-graph/detail/{id}", 999999))
+        mockMvc.perform(get("/api/v1/call-graph/detail/{id}", 999999))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(404));
     }
@@ -129,7 +129,7 @@ public class TemplateExecutionRecordControllerTest extends BaseTest {
     @Test
     @Order(4)
     void testQueryFindStackRecordsEmpty() throws Exception {
-        mockMvc.perform(get("/api/v1/template/execution/find-stack/records/{templateId}", testTemplateId)
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}/find-stack/records", testProjectId, testTemplateId)
                         .param("page", "1")
                         .param("pageSize", "10"))
                 .andExpect(status().isOk())
@@ -144,7 +144,7 @@ public class TemplateExecutionRecordControllerTest extends BaseTest {
     @Test
     @Order(5)
     void testQueryFindStackRecordsWithTimeFilter() throws Exception {
-        mockMvc.perform(get("/api/v1/template/execution/find-stack/records/{templateId}", testTemplateId)
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}/find-stack/records", testProjectId, testTemplateId)
                         .param("minStartTime", "2020-01-01 00:00:00")
                         .param("page", "1")
                         .param("pageSize", "10"))
@@ -159,7 +159,7 @@ public class TemplateExecutionRecordControllerTest extends BaseTest {
     @Test
     @Order(6)
     void testGetFindStackDetailNotFound() throws Exception {
-        mockMvc.perform(get("/api/v1/template/execution/find-stack/detail/{id}", 999999))
+        mockMvc.perform(get("/api/v1/find-stack/detail/{id}", 999999))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(404));
     }
@@ -172,7 +172,7 @@ public class TemplateExecutionRecordControllerTest extends BaseTest {
     void testCleanup() throws Exception {
         ensureInitialized();
         if (testTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", testTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, testTemplateId))
                     .andExpect(status().isOk());
         }
         if (testProjectId != null) {

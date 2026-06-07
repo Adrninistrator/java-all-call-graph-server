@@ -1,6 +1,6 @@
 package com.github.adrninistrator.jacgserver.service.impl;
 
-import com.adrninistrator.jacg.conf.ConfigureWrapper;
+
 import com.adrninistrator.jacg.conf.enums.ConfigDbKeyEnum;
 import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseListEnum;
 import com.adrninistrator.jacg.conf.enums.OtherConfigFileUseSetEnum;
@@ -34,7 +34,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 模板管理服务实现类
@@ -52,6 +55,11 @@ public class TemplateServiceImpl implements TemplateService {
     private static final Logger logger = LoggerFactory.getLogger(TemplateServiceImpl.class);
 
     private static final String TEMPLATE_INFO_FILE = "template.json";
+
+    /**
+     * 模板写入锁池，防止同一模板并发保存时的 read-modify-write 竞态条件导致配置丢失
+     */
+    private final ConcurrentHashMap<String, Object> templateWriteLocks = new ConcurrentHashMap<>();
 
     @Autowired
     private ConfigService configService;
@@ -98,8 +106,8 @@ public class TemplateServiceImpl implements TemplateService {
     }
 
     @Override
-    public TemplateVO getTemplate(String templateId) {
-        String templateDir = findTemplateDir(templateId);
+    public TemplateVO getTemplate(String projectId, String templateId) {
+        String templateDir = configService.findTemplateDir(templateId, projectId);
         if (templateDir == null) {
             throw new TemplateNotFoundException("模板不存在: " + templateId);
         }
@@ -271,13 +279,128 @@ public class TemplateServiceImpl implements TemplateService {
     }
 
     @Override
-    public void updateTemplate(String templateId, TemplateDTO templateDTO) {
+    public void updateTemplate(String projectId, String templateId, TemplateDTO templateDTO) {
         // 检查模板是否正在执行
         if (executeService.isTemplateExecuting(templateId)) {
             throw new ExecuteException("模板正在执行调用链生成，请稍后再试");
         }
 
-        String templateDir = findTemplateDir(templateId);
+        // 对同一模板的保存操作加锁，防止并发 read-modify-write 竞态导致配置丢失
+        Object lock = templateWriteLocks.computeIfAbsent(templateId, k -> new Object());
+        synchronized (lock) {
+            doUpdateTemplate(projectId, templateId, templateDTO);
+        }
+    }
+
+    @Override
+    public void mergeUpdateTemplate(String projectId, String templateId, TemplateDTO templateDTO) {
+        // 检查模板是否正在执行
+        if (executeService.isTemplateExecuting(templateId)) {
+            throw new ExecuteException("模板正在执行调用链生成，请稍后再试");
+        }
+
+        // 对同一模板的保存操作加锁，在锁内完成 Read-Merge-Write 防止并发覆盖
+        Object lock = templateWriteLocks.computeIfAbsent(templateId, k -> new Object());
+        synchronized (lock) {
+            doMergeUpdateTemplate(projectId, templateId, templateDTO);
+        }
+    }
+
+    /**
+     * 在锁内执行：读取当前完整配置 → 合并增量 → 校验 → 写入
+     */
+    private void doMergeUpdateTemplate(String projectId, String templateId, TemplateDTO incrementalDTO) {
+        String templateDir = configService.findTemplateDir(templateId, projectId);
+        if (templateDir == null) {
+            throw new TemplateNotFoundException("模板不存在: " + templateId);
+        }
+
+        File templateInfoFile = new File(templateDir, TEMPLATE_INFO_FILE);
+        TemplateInfoEntity existingInfo = JsonUtil.fromFile(templateInfoFile, TemplateInfoEntity.class);
+        if (existingInfo == null) {
+            throw new ConfigException("读取模板配置失败");
+        }
+
+        // 读取当前磁盘上的完整配置文件
+        JACGConfigDTO currentConfig = ConfigReaderUtil.readJACGConfig(templateDir);
+
+        // 合并增量配置到当前配置：仅覆盖传入的非空类别
+        JACGConfigDTO mergedConfig = mergeJACGConfig(currentConfig, incrementalDTO.getJacgConfig());
+
+        // 构建完整的 TemplateDTO（基本信息 + 合并后的配置）
+        TemplateDTO fullDTO = new TemplateDTO();
+        fullDTO.setDescription(incrementalDTO.getDescription() != null ? incrementalDTO.getDescription() : existingInfo.getDescription());
+        fullDTO.setDirection(incrementalDTO.getDirection() != null ? incrementalDTO.getDirection() : existingInfo.getDirection());
+        fullDTO.setDefaultTemplate(incrementalDTO.getDefaultTemplate() != null ? incrementalDTO.getDefaultTemplate() : existingInfo.getDefaultTemplate());
+        fullDTO.setJacgConfig(mergedConfig);
+
+        // 委托给 doUpdateTemplate 完成校验和写入
+        doUpdateTemplate(projectId, templateId, fullDTO);
+    }
+
+    /**
+     * 合并增量 JACG 配置到当前配置
+     * 在每个配置类别内做 key 级别合并：保留当前配置中未修改的 key，仅覆盖增量中指定的 key
+     */
+    private JACGConfigDTO mergeJACGConfig(JACGConfigDTO current, JACGConfigDTO incremental) {
+        if (current == null) {
+            return incremental == null ? new JACGConfigDTO() : incremental;
+        }
+        if (incremental == null) {
+            return current;
+        }
+
+        JACGConfigDTO merged = new JACGConfigDTO();
+
+        // dbConfig 由项目配置决定，不在此合并
+        merged.setDbConfig(current.getDbConfig());
+
+        // mainConfig: key 级别合并，增量的 key 覆盖当前值
+        if (incremental.getMainConfig() != null) {
+            Map<String, Object> mainMerged = current.getMainConfig() != null ?
+                    new HashMap<>(current.getMainConfig()) : new HashMap<>();
+            mainMerged.putAll(incremental.getMainConfig());
+            merged.setMainConfig(mainMerged);
+        } else {
+            merged.setMainConfig(current.getMainConfig());
+        }
+
+        // listConfig: key 级别合并，增量的 key 整体替换当前值（列表不支持追加，整体替换）
+        if (incremental.getListConfig() != null) {
+            Map<String, List<String>> listMerged = current.getListConfig() != null ?
+                    new HashMap<>(current.getListConfig()) : new HashMap<>();
+            listMerged.putAll(incremental.getListConfig());
+            merged.setListConfig(listMerged);
+        } else {
+            merged.setListConfig(current.getListConfig());
+        }
+
+        // setConfig: key 级别合并，增量的 key 整体替换当前值
+        if (incremental.getSetConfig() != null) {
+            Map<String, List<String>> setMerged = current.getSetConfig() != null ?
+                    new HashMap<>(current.getSetConfig()) : new HashMap<>();
+            setMerged.putAll(incremental.getSetConfig());
+            merged.setSetConfig(setMerged);
+        } else {
+            merged.setSetConfig(current.getSetConfig());
+        }
+
+        // elConfig: key 级别合并，增量的 key 覆盖当前值
+        if (incremental.getElConfig() != null) {
+            Map<String, Object> elMerged = current.getElConfig() != null ?
+                    new HashMap<>(current.getElConfig()) : new HashMap<>();
+            elMerged.putAll(incremental.getElConfig());
+            merged.setElConfig(elMerged);
+        } else {
+            merged.setElConfig(current.getElConfig());
+        }
+
+        return merged;
+    }
+
+    private void doUpdateTemplate(String projectId, String templateId, TemplateDTO templateDTO) {
+
+        String templateDir = configService.findTemplateDir(templateId, projectId);
         if (templateDir == null) {
             throw new TemplateNotFoundException("模板不存在: " + templateId);
         }
@@ -400,13 +523,13 @@ public class TemplateServiceImpl implements TemplateService {
     }
 
     @Override
-    public void deleteTemplate(String templateId) {
+    public void deleteTemplate(String projectId, String templateId) {
         // 检查模板是否正在执行
         if (executeService.isTemplateExecuting(templateId)) {
             throw new ExecuteException("模板正在执行调用链生成，请稍后再试");
         }
 
-        String templateDir = findTemplateDir(templateId);
+        String templateDir = configService.findTemplateDir(templateId, projectId);
         if (templateDir == null) {
             throw new TemplateNotFoundException("模板不存在: " + templateId);
         }
@@ -426,13 +549,13 @@ public class TemplateServiceImpl implements TemplateService {
     }
 
     @Override
-    public TemplateVO copyTemplate(String templateId, String description) {
+    public TemplateVO copyTemplate(String projectId, String templateId, String description) {
         // 检查模板是否正在执行
         if (executeService.isTemplateExecuting(templateId)) {
             throw new ExecuteException("模板正在执行调用链生成，请稍后再试");
         }
 
-        TemplateVO sourceTemplate = getTemplate(templateId);
+        TemplateVO sourceTemplate = getTemplate(projectId, templateId);
 
         // 检查项目是否正在执行
         if (executeService.isProjectExecuting(sourceTemplate.getProjectId())) {
@@ -451,49 +574,6 @@ public class TemplateServiceImpl implements TemplateService {
         return createTemplate(sourceTemplate.getProjectId(), templateDTO);
     }
 
-    /**
-     * 构建模板的ConfigureWrapper（用于执行调用链生成）
-     * 直接从配置文件读取，不从DTO构建
-     */
-    public ConfigureWrapper buildConfigureWrapper(String templateId) {
-        String templateDir = findTemplateDir(templateId);
-        if (templateDir == null) {
-            throw new TemplateNotFoundException("模板不存在: " + templateId);
-        }
-
-        // 直接从配置文件读取，创建ConfigureWrapper
-        ConfigureWrapper wrapper = new ConfigureWrapper(false, templateDir);
-        return wrapper;
-    }
-
-    /**
-     * 查找模板目录
-     */
-    private String findTemplateDir(String templateId) {
-        String projectConfDir = configService.getProjectConfDir();
-        File projectConfDirFile = new File(projectConfDir);
-
-        if (!projectConfDirFile.exists() || !projectConfDirFile.isDirectory()) {
-            return null;
-        }
-
-        File[] projectDirs = projectConfDirFile.listFiles(File::isDirectory);
-        if (projectDirs == null) {
-            return null;
-        }
-
-        for (File projectDir : projectDirs) {
-            File templatesDir = new File(projectDir, Constants.TEMPLATES_DIR);
-            if (templatesDir.exists() && templatesDir.isDirectory()) {
-                File templateDir = new File(templatesDir, templateId);
-                if (templateDir.exists() && templateDir.isDirectory()) {
-                    return templateDir.getAbsolutePath();
-                }
-            }
-        }
-
-        return null;
-    }
 
     /**
      * 检查模板描述是否已存在（在同一项目内）
@@ -695,7 +775,7 @@ public class TemplateServiceImpl implements TemplateService {
     public String findDefaultTemplateDir(String projectId, String direction) {
         String defaultTemplateId = getDefaultTemplateId(projectId, direction);
         if (defaultTemplateId != null) {
-            return findTemplateDir(defaultTemplateId);
+            return configService.findTemplateDir(defaultTemplateId, projectId);
         }
         return null;
     }

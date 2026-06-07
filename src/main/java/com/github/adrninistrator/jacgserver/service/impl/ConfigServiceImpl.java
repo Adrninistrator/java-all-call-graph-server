@@ -862,6 +862,49 @@ public class ConfigServiceImpl implements ConfigService {
     }
 
     @Override
+    public String findTemplateDir(String templateId, String projectId) {
+        if (templateId == null || templateId.trim().isEmpty()) {
+            return null;
+        }
+
+        String projectConfDir = getProjectConfDir();
+
+        // 若指定了projectId，直接在对应项目目录下查找模板
+        if (projectId != null && !projectId.trim().isEmpty()) {
+            File templateDir = new File(new File(new File(projectConfDir, projectId), Constants.TEMPLATES_DIR), templateId);
+            if (templateDir.exists() && templateDir.isDirectory()) {
+                return templateDir.getAbsolutePath();
+            }
+            // 指定了projectId但未找到，不再遍历其他项目
+            return null;
+        }
+
+        // 未指定projectId，遍历所有项目目录查找模板
+        File projectConfDirFile = new File(projectConfDir);
+        if (!projectConfDirFile.exists() || !projectConfDirFile.isDirectory()) {
+            return null;
+        }
+
+        File[] projectDirs = projectConfDirFile.listFiles(File::isDirectory);
+        if (projectDirs == null) {
+            return null;
+        }
+
+        for (File projectDir : projectDirs) {
+            File templatesDir = new File(projectDir, Constants.TEMPLATES_DIR);
+            if (!templatesDir.exists() || !templatesDir.isDirectory()) {
+                continue;
+            }
+            File templateDir = new File(templatesDir, templateId);
+            if (templateDir.exists() && templateDir.isDirectory()) {
+                return templateDir.getAbsolutePath();
+            }
+        }
+
+        return null;
+    }
+
+    @Override
     public String getElUsageComponentContent(String type) {
         if (type == null) {
             return null;

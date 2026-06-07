@@ -46,9 +46,9 @@ public class TemplateController {
     /**
      * 获取模板详情
      */
-    @GetMapping("/templates/{templateId}")
-    public ResponseResult getTemplate(@PathVariable String templateId) {
-        TemplateVO template = templateService.getTemplate(templateId);
+    @GetMapping("/projects/{projectId}/templates/{templateId}")
+    public ResponseResult getTemplate(@PathVariable String projectId, @PathVariable String templateId) {
+        TemplateVO template = templateService.getTemplate(projectId, templateId);
         return ResponseUtil.success(template);
     }
 
@@ -64,28 +64,28 @@ public class TemplateController {
     /**
      * 更新模板
      */
-    @PutMapping("/templates/{templateId}")
-    public ResponseResult updateTemplate(@PathVariable String templateId, @RequestBody TemplateDTO templateDTO) {
-        templateService.updateTemplate(templateId, templateDTO);
+    @PutMapping("/projects/{projectId}/templates/{templateId}")
+    public ResponseResult updateTemplate(@PathVariable String projectId, @PathVariable String templateId, @RequestBody TemplateDTO templateDTO) {
+        templateService.updateTemplate(projectId, templateId, templateDTO);
         return ResponseUtil.success();
     }
 
     /**
      * 删除模板
      */
-    @DeleteMapping("/templates/{templateId}")
-    public ResponseResult deleteTemplate(@PathVariable String templateId) {
-        templateService.deleteTemplate(templateId);
+    @DeleteMapping("/projects/{projectId}/templates/{templateId}")
+    public ResponseResult deleteTemplate(@PathVariable String projectId, @PathVariable String templateId) {
+        templateService.deleteTemplate(projectId, templateId);
         return ResponseUtil.success();
     }
 
     /**
      * 复制模板
      */
-    @PostMapping("/templates/{templateId}/copy")
-    public ResponseResult copyTemplate(@PathVariable String templateId, @RequestBody Map<String, String> request) {
+    @PostMapping("/projects/{projectId}/templates/{templateId}/copy")
+    public ResponseResult copyTemplate(@PathVariable String projectId, @PathVariable String templateId, @RequestBody Map<String, String> request) {
         String description = request.get("description");
-        TemplateVO template = templateService.copyTemplate(templateId, description);
+        TemplateVO template = templateService.copyTemplate(projectId, templateId, description);
         return ResponseUtil.success(template);
     }
 }

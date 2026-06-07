@@ -41,18 +41,18 @@ public class ExecuteController {
     /**
      * 执行调用链生成
      */
-    @PostMapping("/templates/{templateId}/execute/callgraph")
-    public ResponseResult executeCallGraph(@PathVariable String templateId) {
-        ExecutionVO execution = executeService.executeCallGraph(templateId);
+    @PostMapping("/projects/{projectId}/templates/{templateId}/execute/callgraph")
+    public ResponseResult executeCallGraph(@PathVariable String projectId, @PathVariable String templateId) {
+        ExecutionVO execution = executeService.executeCallGraph(projectId, templateId);
         return ResponseUtil.success(execution);
     }
 
     /**
      * 执行根据关键字生成调用堆栈
      */
-    @PostMapping("/templates/{templateId}/execute/findstack")
-    public ResponseResult executeFindStack(@PathVariable String templateId) {
-        ExecutionVO execution = executeService.executeFindStack(templateId);
+    @PostMapping("/projects/{projectId}/templates/{templateId}/execute/findstack")
+    public ResponseResult executeFindStack(@PathVariable String projectId, @PathVariable String templateId) {
+        ExecutionVO execution = executeService.executeFindStack(projectId, templateId);
         return ResponseUtil.success(execution);
     }
 
@@ -84,8 +84,8 @@ public class ExecuteController {
     /**
      * 检查模板是否正在执行调用链生成
      */
-    @GetMapping("/templates/{templateId}/executing")
-    public ResponseResult isTemplateExecuting(@PathVariable String templateId) {
+    @GetMapping("/projects/{projectId}/templates/{templateId}/executing")
+    public ResponseResult isTemplateExecuting(@PathVariable String projectId, @PathVariable String templateId) {
         Map<String, Object> data = new HashMap<>();
         data.put("executing", executeService.isTemplateExecuting(templateId));
         // 返回执行状态信息（包含执行耗时）

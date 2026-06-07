@@ -144,7 +144,7 @@ public class TemplateControllerTest extends BaseTest {
     @Test
     @Order(2)
     void testGetTemplateVerifyConfig() throws Exception {
-        mockMvc.perform(get("/api/v1/templates/{templateId}", callerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.MAIN_CONFIG.getValue() + ".CKE_CALL_GRAPH_OUTPUT_DETAIL").value("1"))
@@ -181,7 +181,7 @@ public class TemplateControllerTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", callerTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
@@ -191,7 +191,7 @@ public class TemplateControllerTest extends BaseTest {
     @Test
     @Order(4)
     void testGetTemplateVerifyUpdatedConfig() throws Exception {
-        mockMvc.perform(get("/api/v1/templates/{templateId}", callerTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.MAIN_CONFIG.getValue() + ".CKE_CALL_GRAPH_OUTPUT_DETAIL").value("2"))
@@ -220,7 +220,7 @@ public class TemplateControllerTest extends BaseTest {
     @Test
     @Order(6)
     void testGetCalleeTemplateVerifyConfig() throws Exception {
-        mockMvc.perform(get("/api/v1/templates/{templateId}", calleeTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, calleeTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.SET_CONFIG.getValue() + ".OCFUSE_METHOD_CLASS_4CALLEE").isArray())
@@ -242,7 +242,7 @@ public class TemplateControllerTest extends BaseTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("description", "复制的测试模板");
 
-        MvcResult result = mockMvc.perform(post("/api/v1/templates/{templateId}/copy", callerTemplateId)
+        MvcResult result = mockMvc.perform(post("/api/v1/projects/{projectId}/templates/{templateId}/copy", testProjectId, callerTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
@@ -256,7 +256,7 @@ public class TemplateControllerTest extends BaseTest {
     @Test
     @Order(9)
     void testVerifyCopiedTemplateConfig() throws Exception {
-        mockMvc.perform(get("/api/v1/templates/{templateId}", copiedTemplateId))
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, copiedTemplateId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.jacgConfig." + ConfigCategoryEnum.MAIN_CONFIG.getValue() + ".CKE_CALL_GRAPH_OUTPUT_DETAIL").value("2"))
@@ -266,7 +266,9 @@ public class TemplateControllerTest extends BaseTest {
     @Test
     @Order(10)
     void testGetNonExistentTemplate() throws Exception {
-        mockMvc.perform(get("/api/v1/templates/{templateId}", "nonexistent_template_id"))
+        ensureProjectCreated();
+
+        mockMvc.perform(get("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, "nonexistent_template_id"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1002));
     }
@@ -388,7 +390,7 @@ public class TemplateControllerTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", defaultCalleeTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCalleeTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
@@ -414,7 +416,7 @@ public class TemplateControllerTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", defaultCallerTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
@@ -444,7 +446,7 @@ public class TemplateControllerTest extends BaseTest {
 
         body.put("jacgConfig", jacgConfig);
 
-        mockMvc.perform(put("/api/v1/templates/{templateId}", defaultCallerTemplateId)
+        mockMvc.perform(put("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerTemplateId)
                         .contentType("application/json")
                         .content(toJson(body)))
                 .andExpect(status().isOk())
@@ -456,27 +458,27 @@ public class TemplateControllerTest extends BaseTest {
     void testDeleteTemplates() throws Exception {
         // 删除复制的模板
         if (copiedTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", copiedTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, copiedTemplateId))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(200));
         }
         // 删除caller模板
         if (callerTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", callerTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, callerTemplateId))
                     .andExpect(status().isOk());
         }
         // 删除callee模板
         if (calleeTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", calleeTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, calleeTemplateId))
                     .andExpect(status().isOk());
         }
         // 删除默认模板
         if (defaultCalleeTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", defaultCalleeTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCalleeTemplateId))
                     .andExpect(status().isOk());
         }
         if (defaultCallerTemplateId != null) {
-            mockMvc.perform(delete("/api/v1/templates/{templateId}", defaultCallerTemplateId))
+            mockMvc.perform(delete("/api/v1/projects/{projectId}/templates/{templateId}", testProjectId, defaultCallerTemplateId))
                     .andExpect(status().isOk());
         }
     }

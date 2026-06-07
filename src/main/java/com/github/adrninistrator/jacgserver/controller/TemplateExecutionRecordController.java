@@ -25,7 +25,7 @@ import java.util.Map;
  * @since 1.0.0
  */
 @RestController
-@RequestMapping("/api/v1/template/execution")
+@RequestMapping("/api/v1")
 public class TemplateExecutionRecordController {
 
     @Resource
@@ -34,8 +34,9 @@ public class TemplateExecutionRecordController {
     /**
      * 查询调用链执行记录列表（分页）
      */
-    @GetMapping("/call-graph/records/{templateId}")
+    @GetMapping("/projects/{projectId}/templates/{templateId}/call-graph/records")
     public ResponseResult queryCallGraphRecords(
+            @PathVariable String projectId,
             @PathVariable String templateId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") Date minStartTime,
             @RequestParam(defaultValue = "1") int page,
@@ -69,8 +70,9 @@ public class TemplateExecutionRecordController {
     /**
      * 查询关键字生成堆栈执行记录列表（分页）
      */
-    @GetMapping("/find-stack/records/{templateId}")
+    @GetMapping("/projects/{projectId}/templates/{templateId}/find-stack/records")
     public ResponseResult queryFindStackRecords(
+            @PathVariable String projectId,
             @PathVariable String templateId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") Date minStartTime,
             @RequestParam(defaultValue = "1") int page,

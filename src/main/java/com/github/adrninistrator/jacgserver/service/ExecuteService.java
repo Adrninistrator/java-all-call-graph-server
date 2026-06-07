@@ -23,10 +23,11 @@ public interface ExecuteService {
     /**
      * 执行调用链生成
      *
+     * @param projectId  项目ID
      * @param templateId 模板ID
      * @return 执行信息
      */
-    ExecutionVO executeCallGraph(String templateId);
+    ExecutionVO executeCallGraph(String projectId, String templateId);
 
     /**
      * 查询执行状态
@@ -80,8 +81,9 @@ public interface ExecuteService {
     /**
      * 执行根据关键字生成调用堆栈
      *
+     * @param projectId  项目ID
      * @param templateId 模板ID
      * @return 执行信息
      */
-    ExecutionVO executeFindStack(String templateId);
+    ExecutionVO executeFindStack(String projectId, String templateId);
 }

@@ -50,6 +50,11 @@ public class ProjectServiceImpl implements ProjectService {
 
     private static final Logger logger = LoggerFactory.getLogger(ProjectServiceImpl.class);
 
+    /**
+     * 项目写入锁池，防止同一项目并发保存时的 read-modify-write 竞态条件导致配置丢失
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> projectWriteLocks = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Autowired
     private ConfigService configService;
 
@@ -221,6 +226,15 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ExecuteException("项目正在执行静态分析，请稍后再试");
         }
 
+        // 对同一项目的保存操作加锁，防止并发 read-modify-write 竞态导致配置丢失
+        Object lock = projectWriteLocks.computeIfAbsent(projectId, k -> new Object());
+        synchronized (lock) {
+            doUpdateProject(projectId, projectDTO);
+        }
+    }
+
+    private void doUpdateProject(String projectId, ProjectDTO projectDTO) {
+
         String projectDir = configService.getProjectConfDir() + File.separator + projectId;
         if (!FileUtil.exists(projectDir)) {
             throw new ProjectNotFoundException("项目不存在: " + projectId);
@@ -367,6 +381,11 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public void deleteProjectByMcp(String projectId) {
+        // 先检查项目是否存在
+        if (!projectExists(projectId)) {
+            throw new ConfigException("项目不存在: " + projectId);
+        }
+
         // 检查项目是否通过MCP创建
         if (!isProjectCreatedByMcp(projectId)) {
             throw new ConfigException("仅允许删除通过MCP创建的项目: " + projectId);

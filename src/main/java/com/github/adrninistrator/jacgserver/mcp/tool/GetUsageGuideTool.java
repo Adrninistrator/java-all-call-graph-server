@@ -34,6 +34,9 @@ public class GetUsageGuideTool implements McpToolHandler {
     @Override
     public JsonNode handle(JsonNode arguments) {
         String language = arguments.has("language") ? arguments.get("language").asText() : "zh";
+        if (!"zh".equalsIgnoreCase(language) && !"en".equalsIgnoreCase(language)) {
+            return McpToolHelper.createErrorResult("不支持的language参数值: " + language + "，可选值：zh（中文）、en（英文）");
+        }
         boolean isEn = "en".equalsIgnoreCase(language);
 
         try {
